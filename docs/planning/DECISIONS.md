@@ -49,6 +49,7 @@ Claude fills this in after each answer.
 | P0-8 | gitleaks pre-commit hook on a PC with Smart App Control | Use the installed gitleaks: hook id `gitleaks-system` runs the official winget gitleaks 8.30.1 on PATH | 2026-10-19 | Smart App Control blocked the unsigned gitleaks pre-commit built from source; the scan still runs before every commit without weakening Windows. |
 | P0-9 | Where the approved Claude plugins are switched on | This project: `enabledPlugins` in the repo's `.claude/settings.json` (`--scope project`), committed on a branch and merged by pull request | 2026-10-19 | Shared tooling lives in the repo so every clone and Claude session gets the same setup. |
 | P0-10 | Security reviewer hardening ideas | All three: PowerShell deny rules and `.env.*` deny rules (with `.env.example` carved out) in `.claude/settings.json`; `.gitignore` ignores every `.env.*` except `.env.example`; secret-scan actions pinned to commit SHAs | 2026-10-19 | Commit-pinned actions follow GitHub's hardening guide, and both `.env` gaps back up Rule 2. |
+| P0-11 | Create the GitHub repo and push | Create and push main: public `derekburnz/fairshuffle` with the roadmap description, local repo linked as `origin`, `main` pushed; plugin and hardening branches follow as pull requests after step 8 | 2026-10-19 | Approved in the roadmap and every check passed; pushing now lets branch protection go on before other changes land. |
 
 ---
 
