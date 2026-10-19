@@ -1,0 +1,56 @@
+# Copied to the repo root in Phase 0 step 4 (2026-10-14). Until issue P1-01 adds src/fairshuffle,
+# install with `uv sync --no-install-project` (plain `uv sync` needs the package to exist).
+# Versions are lower bounds checked on PyPI 2026-10-09.
+# Depends on D18 (Python 3.14), D19 (uv), D20 (ruff + pyright + pytest), D21 (PySide6-Essentials),
+# D22 (src layout) and D23 (pre-commit framework). Runtime dependencies for later phases (for example keyring after D10)
+# are added in the PR that needs them, listed under "New dependencies" for Derek to approve.
+
+[project]
+name = "fairshuffle"
+version = "0.1.0"
+description = "A Windows tray app that gives a Spotify playlist a true Fisher-Yates shuffle."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+dependencies = [
+    "PySide6-Essentials>=6.12",
+]
+
+[project.gui-scripts]
+fairshuffle = "fairshuffle.__main__:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16",
+    "pyright[nodejs]>=1.1.414",  # [nodejs] bundles Node, so no separate Node install
+    "pytest>=9.1",
+    "pytest-qt>=4.5",
+    "pytest-cov>=7.1",
+    "pre-commit>=4.6",  # runs the hooks in .pre-commit-config.yaml (D23)
+]
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear, UP modern syntax,
+# SIM simplifications, S bandit security checks (flags things like hard-coded secrets).
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]  # asserts and obviously fake test credentials
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+addopts = "-ra"

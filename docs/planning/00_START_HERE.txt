@@ -1,0 +1,108 @@
+PLAYLIST SHUFFLER: PLANNING PACKAGE
+Read this first. About 3 minutes.
+Researched and written September 24, 2026.
+
+======================================================================
+WHAT IS IN THIS PACKAGE
+======================================================================
+
+  DISPATCH_KICKOFF.txt
+      The message you send to Dispatch to start the project.
+
+  CLAUDE.md
+      Standing rules. Claude Code loads this file automatically at the
+      start of every session in the project folder. The most important
+      rule in it: Claude stops and asks you at every decision.
+
+  docs/planning/PROJECT_PLAN.md
+      The full plan: research findings, how the app will work, which
+      agents, skills and connectors to use, secret safety, GitHub setup
+      and the phase-by-phase roadmap.
+
+  docs/planning/DECISIONS.md
+      Every choice you will make, as quick Decision Cards (a small
+      pros/cons table and a recommendation), plus a log of your answers.
+
+  docs/planning/CLAUDE_CODE_PRIMER.md
+      Plain-language guide to agents, skills, MCP connectors, hooks,
+      plugins and permissions, with networking analogies.
+
+  docs/planning/starter-kit/
+      Proposed agents, skills, settings, .gitignore, GitHub templates
+      and a secret-scanning hook. NOTHING in here is active until you
+      approve it and Claude copies it into place.
+
+======================================================================
+BEFORE YOU SEND IT (about 10 minutes)
+======================================================================
+
+  1. Check you have these:
+       - A Claude Pro or Max plan (Dispatch and Claude Code need one)
+       - The Claude desktop app on your PC and the Claude mobile app
+       - A GitHub account (free is fine)
+       - Spotify Premium. Since February 2026 Spotify only lets
+         Premium accounts own a developer app.
+
+  2. Create this folder:   C:\Projects\playlist-shuffler
+     Avoid Documents or Desktop if OneDrive syncs them. OneDrive and
+     Git fight over the same files. "playlist-shuffler" is only a
+     working name; you pick the real name in Decision D3.
+
+  3. Unzip this package into that folder so that CLAUDE.md sits at
+     C:\Projects\playlist-shuffler\CLAUDE.md
+
+  4. In the Claude desktop app, give Claude access to that folder.
+
+  5. Keep your PC awake with the desktop app open while Claude works.
+     Dispatch runs the work on your computer, not in the cloud.
+
+======================================================================
+SEND IT
+======================================================================
+
+  Open Dispatch (phone or desktop) and paste the full text of
+  DISPATCH_KICKOFF.txt as your message.
+
+  Alternative with the same result: open the folder in the Claude
+  desktop app's Code tab (or run "claude" in a terminal inside the
+  folder) and paste the same text.
+
+======================================================================
+WHAT HAPPENS NEXT
+======================================================================
+
+  Stage A  Research check. Claude re-verifies the research (Spotify
+           changes its API often) and reports anything that changed.
+
+  Stage B  Decisions. Claude teaches you the Claude Code basics, then
+           walks you through Decision Cards one at a time: language,
+           app name, repo settings and which agents, skills and
+           connectors to install. You answer with a letter.
+
+  Stage C  Final roadmap. Claude turns your answers into a concrete
+           plan with GitHub milestones and issues for you to approve.
+
+  Stage D  Build, every step version controlled on GitHub:
+             Setup (agents, skills, connectors, GitHub)
+             -> Creation -> Goal 1 -> Goal 2 -> Goal 3
+             -> Prototype -> Bug fixes -> Visual polish -> v1.0
+
+  Whenever there is an option A or B, a do-it-or-skip-it choice or
+  more than one sensible next step, Claude stops and asks you.
+
+======================================================================
+HOW TO ANSWER
+======================================================================
+
+  Decision Card:     reply with the letter (A, B or C).
+                     Add "explain more" if you want detail first.
+  Any time:          reply "what's next?" for the menu of next options.
+  Want to pause:     reply "stop here and write a status report".
+
+======================================================================
+SAFETY
+======================================================================
+
+  Never paste a password, token or Client ID into the chat. Claude will
+  tell you which local file to put a value in, and that file is
+  blocked from Git and from Claude's own file reading.

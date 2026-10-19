@@ -1,0 +1,39 @@
+# Git pre-commit hooks, managed by the pre-commit framework (D23 C, the common setup in
+# professional Python teams). PROPOSED in Stage C; inert until copied to the repo root in Phase 0.
+#
+# Activate once per clone:   uv run pre-commit install
+# Run on every file by hand: uv run pre-commit run --all-files
+# Update hook versions:      uv run pre-commit autoupdate   (then review the diff in a PR)
+#
+# Versions checked 2026-10-13: gitleaks v8.30.1, ruff-pre-commit v0.16.10 (keep in step with
+# the ruff version in uv.lock so the hook, Claude's hook and CI agree).
+repos:
+  # Blocks a commit if the staged changes contain something that looks like a secret.
+  # gitleaks-system runs the official gitleaks release installed on this PC, because Windows
+  # Smart App Control blocks the unsigned copy pre-commit would build itself (P0-8).
+  # A fresh clone needs gitleaks on PATH first: winget install --id Gitleaks.Gitleaks
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks-system
+        pass_filenames: false  # upstream leaves this out; gitleaks reads the staged diff itself
+
+  # Lint (with safe auto-fixes) then format the staged Python files.
+  # If either hook changes a file, the commit stops; review the change, git add, commit again.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # Small hygiene checks most teams turn on.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files

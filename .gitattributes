@@ -1,0 +1,3 @@
+# Line endings (P0-4): every text file is stored and checked out with LF on every machine,
+# whatever that machine's core.autocrlf setting says. Git detects binary files itself.
+* text=auto eol=lf

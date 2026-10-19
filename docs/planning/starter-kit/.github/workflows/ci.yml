@@ -1,0 +1,65 @@
+# Lint, type check and tests on every pull request and every push to main.
+# PROPOSED in Stage C (2026-10-09) for D1 = Python, D2 = PySide6. Inert until copied to
+# /.github/workflows/ in Phase 1 (issue P1-02). Choices it depends on: D18 Python 3.14,
+# D19 uv, D20 ruff + pyright + pytest, D24 B everything on Windows.
+# Action versions checked 2026-10-09: actions/checkout v7 (v7.0.1),
+# astral-sh/setup-uv v10.2.0 (pinned to the exact tag; that project shows exact tags in its docs).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint and type check (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --locked
+
+      - name: Formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run pyright
+
+  test:
+    name: tests (Windows)
+    runs-on: windows-latest
+    env:
+      # Qt draws nothing on screen in CI; tray and window tests run headless.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --locked
+
+      - name: Tests with coverage
+        run: uv run pytest --cov=fairshuffle --cov-report=term-missing

@@ -1,0 +1,88 @@
+# CLAUDE.md: Playlist Shuffler (working name)
+
+Claude Code loads this file at the start of every session in this folder. It holds the standing rules. The full plan lives in `docs/planning/`.
+
+## The project in one paragraph
+
+A Windows 11 desktop app that lives in the system tray (the hidden icons flyout behind the `^` arrow on the taskbar). The user picks one of their Spotify playlists and the app rewrites that playlist's order with a true uniform random shuffle (Fisher-Yates) through the Spotify Web API. The user then plays the playlist from track 1 with Spotify's own shuffle turned off. Inspired by stevenaleong.com/tools/spotifyplaylistrandomizer, but as a downloadable tray app. It is also a resume portfolio project, so the repo, commits, pull requests and docs must look like a professional team project.
+
+## Who you are working with
+
+Derek, a fourth-year Bachelor of IT (Networking) student. This is one of his first Claude Code projects and his first time using agents, skills and MCP connectors. Teach as you go: say what you are doing and why, briefly, in plain language. He wants to understand every tool well enough to explain it in a job interview. Networking analogies help (he knows routing, switching, BGP, MPLS and enterprise IT admin).
+
+## Rule 1: Derek makes the decisions (most important rule)
+
+- Any time there is a choice between options, or between doing something and not doing it, STOP and ask Derek. Do not choose for him, even when one option looks clearly better. Give your recommendation, then wait.
+- This covers: languages, libraries, frameworks, folder structure, naming, UI layout, which feature or phase to work on next, installing any tool, plugin, MCP server, agent or skill, creating any GitHub resource, merging pull requests, tagging releases and deleting anything.
+- Use the Decision Card format below (the `decision-card` skill holds the full template once installed). Use the AskUserQuestion tool when it is available so Derek can tap an option; otherwise post the card as text and end your turn.
+- When several next steps are valid (for example UI next, sync next or bug fixes next), present a "What's next?" card and let Derek pick.
+- Small mechanical steps inside an already approved task (fixing a typo you made, running tests, formatting) do not need a card. If unsure whether something counts, ask.
+- Record every answer in `docs/planning/DECISIONS.md`: ID, date, choice and a one-line reason.
+
+### Decision Card format
+
+```
+DECISION D#: <short title>
+Why it matters: <one sentence>
+
+| Option | Pros | Cons | Effort |
+|--------|------|------|--------|
+| A. ... | ...  | ...  | Low    |
+| B. ... | ...  | ...  | Medium |
+
+Recommendation: <option>, because <one line>.
+Reply with A or B (or "explain more").
+```
+
+Readable in under 30 seconds. At most 4 options. Only expand into detail when Derek asks.
+
+## Rule 2: Never leak secrets
+
+- Spotify sign-in uses Authorization Code with PKCE, so there is no client secret. Never create, request or store a Spotify client secret.
+- The Spotify Client ID lives only in the local `.env` file, which is gitignored. Commit `.env.example` with placeholder values only.
+- Access and refresh tokens are stored only in Windows Credential Manager (through the chosen stack's keyring library). Never in files inside the repo, never in logs, never printed in chat or in test output.
+- `.env` is blocked from your file tools by `.claude/settings.json`. Do not try to read it another way. If you need to know whether a value is set, ask Derek. Never ask him to paste a secret or token into the chat.
+- Tests use obviously fake values such as `fake-client-id-for-tests`. Never call the real Spotify API from automated tests. Recorded HTTP fixtures must have tokens redacted.
+- Before every commit the gitleaks pre-commit hook runs. Before every pull request the `security-reviewer` agent reviews the diff.
+- Keep Derek's personal details (email, home paths, account names) out of code, docs, fixtures and logs.
+- If a secret is ever committed or pushed: stop, tell Derek immediately, rotate the secret first and only rewrite history with his approval.
+
+## Rule 3: Workplace-grade Git workflow
+
+- After the first commit, never commit directly to `main`. Work on branches named `feat/<issue#>-<short-name>`, `fix/...`, `docs/...`, `test/...`, `chore/...`, `ci/...`.
+- Use Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`). Small, focused commits with clear messages.
+- Every change reaches `main` through a pull request: template filled in, linked to its issue (`Closes #12`), CI green, security review passed, Derek approves the merge. Squash merge, then delete the branch.
+- Each phase is a GitHub milestone. Each goal is broken into issues. Versions follow SemVer tags (`v0.1.0` and up).
+- Ask before: `git push`, creating repos, merging PRs, tagging, creating releases, changing repo settings. Never force-push, never rewrite `main` history, never delete branches, tags or repos without asking.
+- Commits use Derek's GitHub noreply email address, not his personal email.
+
+## Rule 4: Verify Spotify API facts before coding against them
+
+Spotify changed the Web API heavily in 2026 and model training data is out of date. Before writing or changing any Spotify API call, check the `spotify-api-notes` skill and confirm against the official docs (the `spotify-api-researcher` agent does this). Headline facts, verified September 24, 2026:
+
+- Playlist endpoints are `/playlists/{id}/items` (the old `/tracks` paths return 403 for development mode apps).
+- `GET /playlists/{id}/items` returns at most 50 items per page and only works for playlists the user owns or collaborates on.
+- `PUT /playlists/{id}/items` either reorders (`range_start`, `insert_before`, `range_length`, `snapshot_id`) or replaces (`uris`, max 100), never both in one request.
+- Redirect URI must be a loopback IP such as `http://127.0.0.1:PORT/callback`. The word `localhost` is not allowed.
+- Refresh tokens expire 6 months after the original sign-in. Refreshing does not extend that. An expired token returns `400 invalid_grant`: do not retry, send the user back through sign-in.
+- Development mode: app owner needs Premium, max 5 users per app, 429 responses carry `Retry-After`.
+
+## Communication style with Derek
+
+- Lead with the answer. Short. Plain words. Explain jargon the first time it appears.
+- No emojis. No em dashes or en dashes. No Oxford commas. No filler openers ("Great question") and no hedging phrases ("it's worth noting", "importantly").
+- Prose by default. Tables for comparisons and Decision Cards. Lists only when they help.
+- End each work session with a three-line status: done, next options, anything blocked.
+
+## Where things are
+
+| Path | What it is |
+|------|------------|
+| `docs/planning/PROJECT_PLAN.md` | Master plan: research, architecture, toolkit, roadmap |
+| `docs/planning/DECISIONS.md` | Decision Cards and the decision log |
+| `docs/planning/CLAUDE_CODE_PRIMER.md` | Beginner guide to agents, skills, MCP, hooks, plugins |
+| `docs/planning/starter-kit/` | PROPOSED files. Not active until Derek approves each one and you copy it into place |
+
+## Current status
+
+Stage A (research verification) complete on 2026-09-24. Stage B complete on 2026-10-09 (D1 to D8 logged in DECISIONS.md: Python with PySide6, name FairShuffle, public MIT repo). Stage C complete on 2026-10-13 (roadmap in `docs/planning/ROADMAP.md`, tooling D18 to D24 logged: Python 3.14, uv, ruff + pyright + pytest, PySide6-Essentials, src layout, pre-commit framework, CI on Windows). Next: Phase 0 setup. Update this line whenever a stage or phase completes.

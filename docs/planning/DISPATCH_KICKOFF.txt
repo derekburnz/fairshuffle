@@ -1,0 +1,23 @@
+Project kickoff: Playlist Shuffler (working name). This is a development task for Claude Code.
+
+Project folder: C:\Projects\playlist-shuffler
+(If I put it somewhere else, ask me for the path before doing anything.)
+
+1. Read these files first, in this order:
+   - CLAUDE.md
+   - docs/planning/PROJECT_PLAN.md
+   - docs/planning/DECISIONS.md
+   - docs/planning/CLAUDE_CODE_PRIMER.md
+   - docs/planning/starter-kit/README.md
+
+2. Follow CLAUDE.md at all times. The most important rule: I make every decision. Whenever there is an option A or B, a do-it-or-skip-it choice or more than one valid next step, stop and bring me a short Decision Card with pros, cons and your recommendation. Then wait for my answer.
+
+3. Start with Stage A in PROJECT_PLAN.md. Re-verify the research, because Spotify's API rules change often and the plan was researched on September 24, 2026. Report back with a short summary: what is confirmed, what changed and any new risks.
+
+4. Then Stage B. Give me the short Claude Code walkthrough described there, then take me through the Decision Cards one at a time, starting with D1.
+
+5. Do not install anything, create any GitHub resource or write app code until I have approved it.
+
+6. I am new to Claude Code, agents, skills and MCP connectors. Teach me as we go, in short plain language.
+
+Reply with your Stage A summary.

@@ -1,0 +1,57 @@
+# =====================================================================
+# SECRETS AND PERSONAL DATA (never remove this section)
+# =====================================================================
+.env
+.env.local
+.env.*.local
+!.env.example
+secrets/
+*.pem
+*.key
+*.pfx
+*.p12
+# token caches some Spotify libraries write by default (spotipy writes .cache)
+.cache
+.cache-*
+# any JSON with "token" in its name; name test fixtures without that word
+*token*.json
+# local playlist backups, settings and logs if they ever land in the repo
+backups/
+*.log
+logs/
+# Claude Code personal settings (shared settings.json IS committed)
+.claude/settings.local.json
+
+# =====================================================================
+# OS AND EDITORS
+# =====================================================================
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# =====================================================================
+# PYTHON (tailored in Stage C for D1 = Python, D2 = PySide6)
+# =====================================================================
+__pycache__/
+*.py[cod]
+# virtual environment (uv and venv both create .venv)
+.venv/
+venv/
+# tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# coverage output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+# build output (packaging tool from D25 in Phase 5; its .spec file IS committed)
+build/
+dist/
+*.spec.bak
+*.egg-info/
