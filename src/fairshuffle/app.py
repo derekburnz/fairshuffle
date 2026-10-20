@@ -4,18 +4,62 @@ from __future__ import annotations
 
 import getpass
 import hashlib
+import logging
+import os
 import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QDir, QLockFile, QObject, Signal
+from PySide6.QtCore import (
+    QDir,
+    QLockFile,
+    QMessageLogContext,
+    QObject,
+    QtMsgType,
+    Signal,
+    qInstallMessageHandler,
+)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from fairshuffle import __version__
+from fairshuffle.storage.logging_setup import setup_logging
 from fairshuffle.ui.tray import TrayIcon
 
 APP_NAME = "FairShuffle"
+
+log = logging.getLogger(__name__)
+
+_QT_LOG_LEVELS = {
+    QtMsgType.QtDebugMsg: logging.DEBUG,
+    QtMsgType.QtInfoMsg: logging.INFO,
+    QtMsgType.QtWarningMsg: logging.WARNING,
+    QtMsgType.QtCriticalMsg: logging.ERROR,
+    QtMsgType.QtFatalMsg: logging.CRITICAL,
+}
+
+
+def start_logging() -> None:
+    """Write the log file, with Qt's own messages in it too. A logging problem never stops the app.
+
+    The packaged app has no console, so without this Qt's warnings would go nowhere. Sending them
+    through Python logging also puts them through the redaction filter: Qt quotes file paths, and
+    paths under the home folder contain the Windows user name.
+    """
+    try:
+        setup_logging(secrets=[os.environ.get("SPOTIFY_CLIENT_ID", "")])
+    except OSError as error:
+        # With no file handler this goes to the console, if there is one. Only the reason is
+        # shown, because the full error would quote the logs folder's path.
+        log.warning("Logging to a file is off: %s", error.strerror or type(error).__name__)
+        return
+    qInstallMessageHandler(_log_qt_message)
+
+
+def _log_qt_message(mode: QtMsgType, _context: QMessageLogContext, message: str) -> None:
+    logging.getLogger("fairshuffle.qt").log(
+        _QT_LOG_LEVELS.get(mode, logging.WARNING), "%s", message
+    )
 
 
 def default_instance_key() -> str:
@@ -73,12 +117,14 @@ class SingleInstance(QObject):
         if self._take_lock() or self._lock_unusable():
             return True
         if self._notify_first_copy():
-            return False
+            return False  # the running copy logs the handover, so this copy never opens the log
         # Nobody answered. Either the first copy is still starting, or a crash left a lock file
         # behind that Qt can't read. Removing it fails while its owner is alive, so this only
         # clears an abandoned lock.
         if not self._lock.removeStaleLockFile():
+            log.info("Another copy holds the lock but did not answer; exiting")
             return False
+        log.info("Cleared a lock file left behind by an earlier copy")
         return self._take_lock() or self._lock_unusable()
 
     def release(self) -> None:
@@ -92,7 +138,13 @@ class SingleInstance(QObject):
 
         For example the temp folder is not writable. Running without the guard beats not running.
         """
-        return self._lock.error() != QLockFile.LockError.LockFailedError
+        error = self._lock.error()
+        if error == QLockFile.LockError.LockFailedError:
+            return False
+        log.warning(
+            "Can't use the lock file (%s); running without the single-instance guard", error.name
+        )
+        return True
 
     def _take_lock(self) -> bool:
         if not self._lock.tryLock(0):
@@ -107,7 +159,9 @@ class SingleInstance(QObject):
         server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
         QLocalServer.removeServer(self.key)  # clears a socket file left by a crash (not on Windows)
         if not server.listen(self.key):
-            return  # this copy still runs; later launches just exit without showing a notice
+            # This copy still runs; later launches just exit without showing a notice.
+            log.warning("Can't listen for later launches: %s", server.errorString())
+            return
         server.newConnection.connect(lambda: self._answer(server))
         self._server = server
 
@@ -122,6 +176,7 @@ class SingleInstance(QObject):
                 self._last_notice = now
                 notify = True
         if notify:
+            log.info("FairShuffle was launched again; pointing the user at the tray icon")
             self.activation_requested.emit()
 
     def _notify_first_copy(self) -> bool:
@@ -152,12 +207,15 @@ def create_application() -> QApplication:
 
 def run() -> int:
     """Start FairShuffle and return its exit code once the user picks Quit."""
+    start_logging()
     app = create_application()
     instance = SingleInstance()
     if not instance.acquire():
         return 0  # FairShuffle is already running; that copy shows the user where its icon is
+    log.info("FairShuffle %s starting", __version__)
     app.aboutToQuit.connect(instance.release)
     if not QSystemTrayIcon.isSystemTrayAvailable():
+        log.error("The Windows notification area is not available; exiting")
         QMessageBox.critical(
             None,
             APP_NAME,
@@ -168,4 +226,6 @@ def run() -> int:
     tray = TrayIcon(quit_app=app.quit)
     instance.activation_requested.connect(tray.show_already_running)
     tray.show()
-    return app.exec()
+    exit_code = app.exec()
+    log.info("FairShuffle quit with exit code %d", exit_code)
+    return exit_code
