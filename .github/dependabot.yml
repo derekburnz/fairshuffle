@@ -1,0 +1,23 @@
+# Dependabot opens a pull request when a newer version of something we depend on comes out (P0-15).
+# github-actions bumps the commit-SHA pins in .github/workflows and keeps the tag comment after each
+# SHA current; uv updates pyproject.toml and uv.lock. Each pull request still needs a green secret
+# scan and Derek's merge, like any other change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    labels: [type:ci]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [type:chore]
