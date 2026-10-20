@@ -19,8 +19,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     build_parser().parse_args(argv)
-    # The tray app starts here once issue #6 adds it.
-    return 0
+    # Imported here so that --version answers without loading Qt.
+    from fairshuffle.app import run
+
+    return run()
 
 
 if __name__ == "__main__":
