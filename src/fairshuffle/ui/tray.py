@@ -76,6 +76,15 @@ class TrayIcon(QSystemTrayIcon):
         self._about_box.finished.connect(self._forget_about_box)
         self._about_box.open()
 
+    def show_already_running(self) -> None:
+        """Answer a second launch by pointing at this icon instead of adding another one."""
+        self.showMessage(
+            "FairShuffle is already running",
+            "It lives here in the notification area. Right-click the icon for the menu.",
+            QSystemTrayIcon.MessageIcon.Information,
+            5000,
+        )
+
     def quit(self) -> None:
         """Take the icon out of the notification area, then end the app with exit code 0."""
         self.hide()

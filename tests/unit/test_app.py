@@ -54,3 +54,43 @@ def test_run_explains_and_exits_with_code_one_without_a_notification_area(
 
     assert app.run() == 1
     assert messages == ["FairShuffle needs the Windows notification area, which is not available."]
+
+
+def test_run_steps_aside_when_fairshuffle_is_already_running(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, instance_key: str
+) -> None:
+    first_copy = app.SingleInstance(key=instance_key)
+    assert first_copy.acquire()
+
+    def no_second_icon(**_: object) -> TrayIcon:
+        raise AssertionError("a second launch must not create a tray icon")
+
+    monkeypatch.setattr(app, "TrayIcon", no_second_icon)
+    try:
+        assert app.run() == 0
+    finally:
+        first_copy.release()
+
+
+def test_a_later_launch_makes_the_running_copy_point_at_its_icon(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, instance_key: str
+) -> None:
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: True))
+    titles: list[str] = []
+
+    def tray_that_records_messages(quit_app: Callable[[], None]) -> TrayIcon:
+        tray = TrayIcon(quit_app=quit_app)
+
+        def record_then_quit(title: str, *_: object) -> None:
+            titles.append(title)
+            tray.quit_action.trigger()
+
+        monkeypatch.setattr(tray, "showMessage", record_then_quit)
+        # Launches FairShuffle again once the first copy's event loop is running.
+        QTimer.singleShot(0, lambda: app.SingleInstance(key=instance_key).acquire())
+        return tray
+
+    monkeypatch.setattr(app, "TrayIcon", tray_that_records_messages)
+
+    assert app.run() == 0
+    assert titles == ["FairShuffle is already running"]

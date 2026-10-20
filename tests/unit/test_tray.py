@@ -108,3 +108,19 @@ def test_left_click_or_enter_opens_the_menu(
     tray.activated.emit(reason)
 
     assert bool(popups) is opens_menu
+
+
+def test_already_running_message_points_at_the_icon(
+    tray: TrayIcon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(tray, "showMessage", lambda title, text, *_: shown.append((title, text)))
+
+    tray.show_already_running()
+
+    assert shown == [
+        (
+            "FairShuffle is already running",
+            "It lives here in the notification area. Right-click the icon for the menu.",
+        )
+    ]
