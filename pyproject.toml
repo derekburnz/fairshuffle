@@ -54,3 +54,13 @@ typeCheckingMode = "standard"
 testpaths = ["tests"]
 qt_api = "pyside6"
 addopts = "-ra"
+# Unknown markers, config typos and passing xfail tests become errors instead of silent warnings.
+strict = true
+
+[tool.coverage.run]
+source = ["fairshuffle"]
+branch = true  # also checks that both sides of each if statement ran
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ['if __name__ == "__main__":']
