@@ -83,6 +83,7 @@ Spotify changed the Web API heavily in 2026 and model training data is out of da
 | `docs/planning/CLAUDE_CODE_PRIMER.md` | Beginner guide to agents, skills, MCP, hooks, plugins |
 | `docs/planning/ROADMAP.md` | Final roadmap: architecture, Phase 0 checklist, milestones and issues |
 | `docs/architecture.md` | How the app is built today: modules, threads, sign-in and shuffle flows, where data lives |
+| `docs/spotify-setup.md` | How to register your own Spotify developer app and fill in `.env` |
 
 ## Current status
 

@@ -64,7 +64,7 @@ If you use Claude Code with this repo, its `pyright-lsp` plugin needs pyright in
 uv tool install "pyright[nodejs]==1.1.414"
 ```
 
-From M2 on, the app reads your Spotify Client ID from a `.env` file. Copy `.env.example` to `.env` and fill it in then. `.env` is gitignored; never commit it.
+From M2 on, the app reads your Spotify Client ID from a `.env` file. [`docs/spotify-setup.md`](docs/spotify-setup.md) walks through registering your own Spotify developer app and filling in `.env`. `.env` is gitignored; never commit it.
 
 ## How this project is run
 
