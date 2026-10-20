@@ -64,6 +64,8 @@ Claude fills this in after each answer.
 | P0-23 | GitHub MCP connector (Phase 0 step 6) | Park for later: Phase 0 finishes without it and issue #62 revisits it in M8, while `gh` keeps handling issues and pull requests | 2026-10-20 | `gh` already covers every GitHub step, so a second long-lived token can wait. |
 | P0-24 | Phase 0 sign-off and what comes next | Tidy, then Phase 1: Derek signed off the Phase 0 report; one pull request adds Dependabot's `pre-commit` updates, bumps ruff's hook to v0.17.1 and logs P0-23 and P0-24, then Phase 1 starts in its own thread | 2026-10-20 | Closes Phase 0 cleanly so Phase 1 starts on an up-to-date toolchain. |
 | P1-1 | Required CI checks on `main` (#4) | Yes, from Derek's PC: `lint and type check (Windows)` and `tests (Windows)` join `gitleaks` as required checks in the "Protect main" ruleset, all tied to GitHub Actions; set with `gh` on Derek's typed go-ahead | 2026-10-20 | Required checks on `main` are standard on team repos, so a red check now blocks the merge. |
+| P1-2 | What's next after Phase 1 | Check on my PC, then tag: Derek's PC synced to `main` and he ran FairShuffle from source (icon under `^`, About, a second launch, Quit); on his typed go-ahead v0.1.0 was tagged on b27acfa and released | 2026-10-20 | A person checks a build by hand before it is released, as the M1 definition of done asks. |
+| P1-3 | What's next now that v0.1.0 is out | Tidy, then Phase 2: one issue (#72) and one pull request log P1-2 and P1-3 and mark Phase 1 complete, M1 is closed, then Phase 2 starts in its own thread | 2026-10-20 | Closing a milestone before the next one starts keeps the board and the decision log honest, as at the end of Phase 0 (P0-24). |
 
 ---
 
