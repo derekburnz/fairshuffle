@@ -206,7 +206,7 @@ DoD: repo live and public, `main` protected, secret scan green, Derek can descri
 
 IDs such as P2-03 are planning IDs; GitHub assigns the real numbers when Phase 0 creates the issues. Labels: `type:feature`, `type:bug`, `type:docs`, `type:chore`, `type:test`, `type:ci` and `priority:high/med/low`. Each issue becomes one branch and one PR through the ship-change skill. Issues that are only a Decision Card are labelled `type:decision` and close when the answer is logged.
 
-Every PR also meets the shared definition of done: CI green, security-reviewer PASS, tests for new behaviour, no secrets or personal paths, docs updated when behaviour changes, Derek approves the merge.
+Every PR also meets the shared definition of done: CI green, security-reviewer PASS, tests for new behaviour, no secrets or personal paths, docs updated when behaviour changes. Claude then squash-merges it and tells Derek (P0-21).
 
 ### M1: Creation (v0.1.0)
 
