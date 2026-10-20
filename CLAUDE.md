@@ -13,7 +13,7 @@ Derek, a fourth-year Bachelor of IT (Networking) student. This is one of his fir
 ## Rule 1: Derek makes the decisions (most important rule)
 
 - Any time there is a choice between options, or between doing something and not doing it, STOP and ask Derek. Do not choose for him, even when one option looks clearly better. Give your recommendation, then wait.
-- This covers: languages, libraries, frameworks, folder structure, naming, UI layout, which feature or phase to work on next, installing any tool, plugin, MCP server, agent or skill, creating any GitHub resource, merging pull requests, tagging releases and deleting anything.
+- This covers: languages, libraries, frameworks, folder structure, naming, UI layout, which feature or phase to work on next, installing any tool, plugin, MCP server, agent or skill, creating any GitHub resource, tagging releases and deleting anything.
 - Use the Decision Card format below (the `decision-card` skill holds the full template once installed). Use the AskUserQuestion tool when it is available so Derek can tap an option; otherwise post the card as text and end your turn.
 - When several next steps are valid (for example UI next, sync next or bug fixes next), present a "What's next?" card and let Derek pick.
 - Small mechanical steps inside an already approved task (fixing a typo you made, running tests, formatting) do not need a card. If unsure whether something counts, ask.
@@ -51,9 +51,9 @@ Readable in under 30 seconds. At most 4 options. Only expand into detail when De
 
 - After the first commit, never commit directly to `main`. Work on branches named `feat/<issue#>-<short-name>`, `fix/...`, `docs/...`, `test/...`, `chore/...`, `ci/...`.
 - Use Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`). Small, focused commits with clear messages.
-- Every change reaches `main` through a pull request: template filled in, linked to its issue (`Closes #12`), CI green, security review passed, Derek approves the merge. Squash merge, then delete the branch.
+- Every change reaches `main` through a pull request: template filled in, linked to its issue (`Closes #12`), CI green and security review passed. Claude then squash-merges it and tells Derek (P0-21), and GitHub deletes the branch.
 - Each phase is a GitHub milestone. Each goal is broken into issues. Versions follow SemVer tags (`v0.1.0` and up).
-- Ask before: `git push`, creating repos, merging PRs, tagging, creating releases, changing repo settings. Never force-push, never rewrite `main` history, never delete branches, tags or repos without asking.
+- Ask before: `git push`, creating repos, tagging, creating releases, changing repo settings. Never force-push, never rewrite `main` history, never delete branches, tags or repos without asking.
 - Commits use Derek's GitHub noreply email address, not his personal email.
 
 ## Rule 4: Verify Spotify API facts before coding against them
@@ -81,8 +81,8 @@ Spotify changed the Web API heavily in 2026 and model training data is out of da
 | `docs/planning/PROJECT_PLAN.md` | Master plan: research, architecture, toolkit, roadmap |
 | `docs/planning/DECISIONS.md` | Decision Cards and the decision log |
 | `docs/planning/CLAUDE_CODE_PRIMER.md` | Beginner guide to agents, skills, MCP, hooks, plugins |
-| `docs/planning/starter-kit/` | PROPOSED files. Not active until Derek approves each one and you copy it into place |
+| `docs/planning/ROADMAP.md` | Final roadmap: architecture, Phase 0 checklist, milestones and issues |
 
 ## Current status
 
-Stage A (research verification) complete on 2026-09-24. Stage B complete on 2026-10-09 (D1 to D8 logged in DECISIONS.md: Python with PySide6, name FairShuffle, public MIT repo). Stage C complete on 2026-10-13 (roadmap in `docs/planning/ROADMAP.md`, tooling D18 to D24 logged: Python 3.14, uv, ruff + pyright + pytest, PySide6-Essentials, src layout, pre-commit framework, CI on Windows). Next: Phase 0 setup. Update this line whenever a stage or phase completes.
+Stage A (research verification) complete on 2026-09-24. Stage B complete on 2026-10-09 (D1 to D8 logged in DECISIONS.md: Python with PySide6, name FairShuffle, public MIT repo). Stage C complete on 2026-10-13 (roadmap in `docs/planning/ROADMAP.md`, tooling D18 to D24 logged: Python 3.14, uv, ruff + pyright + pytest, PySide6-Essentials, src layout, pre-commit framework, CI on Windows). Phase 0 setup work finished on 2026-10-20 (P0-1 to P0-22 logged): public repo `fairshuffle` with a protected `main`, secret scan, Dependabot, issues and the Roadmap board. Next: Phase 0 report and Derek's sign-off, then Phase 1. Update this line whenever a stage or phase completes.

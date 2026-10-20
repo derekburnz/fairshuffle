@@ -206,7 +206,7 @@ DoD: repo live and public, `main` protected, secret scan green, Derek can descri
 
 IDs such as P2-03 are planning IDs; GitHub assigns the real numbers when Phase 0 creates the issues. Labels: `type:feature`, `type:bug`, `type:docs`, `type:chore`, `type:test`, `type:ci` and `priority:high/med/low`. Each issue becomes one branch and one PR through the ship-change skill. Issues that are only a Decision Card are labelled `type:decision` and close when the answer is logged.
 
-Every PR also meets the shared definition of done: CI green, security-reviewer PASS, tests for new behaviour, no secrets or personal paths, docs updated when behaviour changes, Derek approves the merge.
+Every PR also meets the shared definition of done: CI green, security-reviewer PASS, tests for new behaviour, no secrets or personal paths, docs updated when behaviour changes. Claude then squash-merges it and tells Derek (P0-21).
 
 ### M1: Creation (v0.1.0)
 
@@ -318,7 +318,7 @@ Bugs from M5 are added here as they are found, each with a failing test first.
 
 ## 6. Starter-kit changes
 
-All in `docs/planning/starter-kit/`, still inert. Originals are saved in the project's shared folder at `setup/stage-c/starter-kit-originals/`.
+Phase 0 copied these files into place, and #58 deleted the starter-kit folder (P0-22) so each file exists once. `ci.yml` waits for issue #4, which restores it from Git history. Originals are saved in the project's shared folder at `setup/stage-c/starter-kit-originals/`.
 
 | File | Change |
 |------|--------|
