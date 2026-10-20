@@ -20,5 +20,9 @@ def test_version_flag_prints_version_and_exits_cleanly(capsys: pytest.CaptureFix
     assert capsys.readouterr().out.strip() == f"FairShuffle {fairshuffle.__version__}"
 
 
-def test_no_arguments_exits_with_code_zero() -> None:
-    assert main([]) == 0
+def test_no_arguments_starts_the_app_and_returns_its_exit_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("fairshuffle.app.run", lambda: 7)
+
+    assert main([]) == 7
