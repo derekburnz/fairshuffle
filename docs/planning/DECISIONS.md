@@ -47,6 +47,7 @@ Claude fills this in after each answer.
 | P0-6 | Old kickoff files at the root | Move `00_START_HERE.txt` and `DISPATCH_KICKOFF.txt` into `docs/planning/` before the first commit | 2026-10-14 | The root keeps only real project files; the notes stay as history beside the plan. |
 | P0-7 | Public name on commits and license | Full name: git `user.name` and the MIT `LICENSE` say Derek Burns; PROJECT_PLAN owner line stays; email stays the GitHub noreply address | 2026-10-14 | Portfolio work credited to him directly; contact details stay private. |
 | P0-8 | gitleaks pre-commit hook on a PC with Smart App Control | Use the installed gitleaks: hook id `gitleaks-system` runs the official winget gitleaks 8.30.1 on PATH | 2026-10-19 | Smart App Control blocked the unsigned gitleaks pre-commit built from source; the scan still runs before every commit without weakening Windows. |
+| P0-9 | Where the approved Claude plugins are switched on | This project: `enabledPlugins` in the repo's `.claude/settings.json` (`--scope project`), committed on a branch and merged by pull request | 2026-10-19 | Shared tooling lives in the repo so every clone and Claude session gets the same setup. |
 
 ---
 
