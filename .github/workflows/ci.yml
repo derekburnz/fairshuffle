@@ -1,0 +1,76 @@
+# Lint, type check and tests on every pull request and every push to main.
+# Drafted in Stage C (2026-10-09) and switched on by issue #4 (P1-02). Choices it depends on:
+# D18 Python 3.14, D19 uv, D20 ruff + pyright + pytest, D24 B everything on Windows.
+# Actions are pinned to full commit SHAs like secret-scan.yml (P0-10), checked 2026-10-20:
+# actions/checkout v7.0.1, astral-sh/setup-uv v10.3.0. Dependabot proposes updates; the
+# comment after each SHA names its tag.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege for the workflow token (P0-16): both jobs only read the code.
+permissions:
+  contents: read
+
+# On a pull request, a new push cancels the run still going for the old commit. A push to main
+# gets a group of its own (its commit SHA), so every merged commit gets a finished CI result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint and type check (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # no token copy left in .git/config (P0-17)
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --locked
+
+      - name: Formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run pyright
+
+  test:
+    name: tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      # Qt draws nothing on screen in CI; tray and window tests run headless.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # no token copy left in .git/config (P0-17)
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --locked
+
+      - name: Tests with coverage
+        run: uv run pytest --cov=fairshuffle --cov-report=term-missing
