@@ -81,8 +81,8 @@ Spotify changed the Web API heavily in 2026 and model training data is out of da
 | `docs/planning/PROJECT_PLAN.md` | Master plan: research, architecture, toolkit, roadmap |
 | `docs/planning/DECISIONS.md` | Decision Cards and the decision log |
 | `docs/planning/CLAUDE_CODE_PRIMER.md` | Beginner guide to agents, skills, MCP, hooks, plugins |
-| `docs/planning/starter-kit/` | PROPOSED files. Not active until Derek approves each one and you copy it into place |
+| `docs/planning/ROADMAP.md` | Final roadmap: architecture, Phase 0 checklist, milestones and issues |
 
 ## Current status
 
-Stage A (research verification) complete on 2026-09-24. Stage B complete on 2026-10-09 (D1 to D8 logged in DECISIONS.md: Python with PySide6, name FairShuffle, public MIT repo). Stage C complete on 2026-10-13 (roadmap in `docs/planning/ROADMAP.md`, tooling D18 to D24 logged: Python 3.14, uv, ruff + pyright + pytest, PySide6-Essentials, src layout, pre-commit framework, CI on Windows). Next: Phase 0 setup. Update this line whenever a stage or phase completes.
+Stage A (research verification) complete on 2026-09-24. Stage B complete on 2026-10-09 (D1 to D8 logged in DECISIONS.md: Python with PySide6, name FairShuffle, public MIT repo). Stage C complete on 2026-10-13 (roadmap in `docs/planning/ROADMAP.md`, tooling D18 to D24 logged: Python 3.14, uv, ruff + pyright + pytest, PySide6-Essentials, src layout, pre-commit framework, CI on Windows). Phase 0 setup work finished on 2026-10-20 (P0-1 to P0-22 logged): public repo `fairshuffle` with a protected `main`, secret scan, Dependabot, issues and the Roadmap board. Next: Phase 0 report and Derek's sign-off, then Phase 1. Update this line whenever a stage or phase completes.

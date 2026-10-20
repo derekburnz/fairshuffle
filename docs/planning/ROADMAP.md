@@ -318,7 +318,7 @@ Bugs from M5 are added here as they are found, each with a failing test first.
 
 ## 6. Starter-kit changes
 
-All in `docs/planning/starter-kit/`, still inert. Originals are saved in the project's shared folder at `setup/stage-c/starter-kit-originals/`.
+Phase 0 copied these files into place, and #58 deleted the starter-kit folder (P0-22) so each file exists once. `ci.yml` waits for issue #4, which restores it from Git history. Originals are saved in the project's shared folder at `setup/stage-c/starter-kit-originals/`.
 
 | File | Change |
 |------|--------|

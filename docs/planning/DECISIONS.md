@@ -60,6 +60,7 @@ Claude fills this in after each answer.
 | P0-19 | pyright-lsp plugin | Enable `pyright-lsp` at project scope; it starts the `pyright-langserver` on PATH, which is the user-wide copy from P0-20, because Claude Code refuses to start a language server from inside the project folder, so it can't use the `.venv` copy | 2026-10-19 | Live type checking for Claude while it edits, like the editor has, at the version CI uses (D20). |
 | P0-20 | Where Claude's pyright comes from | User-wide pyright: Derek runs `uv tool install "pyright[nodejs]==1.1.414"` in his own terminal, the version `uv.lock` pins, and bumps it by hand to match when Dependabot updates the project's pyright | 2026-10-19 | The only way the plugin gets a language server, and a matching pin keeps Claude in step with CI. |
 | P0-21 | Who merges pull requests | Claude merges: once a pull request's checks are green and the security-reviewer gives PASS, Claude squash-merges it and tells Derek; Rule 3 in `CLAUDE.md` changes to match, and pushes, tags and releases still need Derek's go-ahead | 2026-10-20 | Keeps work moving between Derek's check-ins, with green checks and the security review still gating every merge. |
+| P0-22 | CI workflow when the starter kit is deleted | Delete, note on #4: `ci.yml` goes with the starter-kit folder, and issue #4 (P1-02) gets a comment with the Git command that restores it from history | 2026-10-20 | Git history is the usual record for removed files, and #4 re-pins the actions by commit SHA anyway. |
 
 ---
 
