@@ -1,7 +1,8 @@
 # Dependabot opens a pull request when a newer version of something we depend on comes out (P0-15).
 # github-actions bumps the commit-SHA pins in .github/workflows and keeps the tag comment after each
-# SHA current; uv updates pyproject.toml and uv.lock. Each pull request still needs a green secret
-# scan and a security review PASS before Claude merges it, like any other change (P0-21).
+# SHA current; uv updates pyproject.toml and uv.lock; pre-commit bumps the hook revs in
+# .pre-commit-config.yaml (P0-24). Each pull request still needs a green secret scan and a
+# security review PASS before Claude merges it, like any other change (P0-21).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -14,6 +15,15 @@ updates:
     labels: [type:ci]
 
   - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: [type:chore]
+
+  - package-ecosystem: pre-commit
     directory: /
     schedule:
       interval: weekly

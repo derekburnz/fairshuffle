@@ -5,8 +5,8 @@
 # Run on every file by hand: uv run pre-commit run --all-files
 # Update hook versions:      uv run pre-commit autoupdate   (then review the diff in a PR)
 #
-# Versions checked 2026-10-14: gitleaks v8.30.1, ruff-pre-commit v0.17.0 (keep in step with
-# the ruff version in uv.lock so the hook, Claude's hook and CI agree).
+# Dependabot proposes rev bumps weekly (P0-24). Keep ruff-pre-commit in step with the ruff
+# version in uv.lock so the hook, Claude's hook and CI agree.
 repos:
   # Blocks a commit if the staged changes contain something that looks like a secret.
   # gitleaks-system runs the official gitleaks release installed on this PC, because Windows
@@ -21,7 +21,7 @@ repos:
   # Lint (with safe auto-fixes) then format the staged Python files.
   # If either hook changes a file, the commit stops; review the change, git add, commit again.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.0
+    rev: v0.17.1
     hooks:
       - id: ruff-check
         args: [--fix]

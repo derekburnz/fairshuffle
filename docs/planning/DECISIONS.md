@@ -61,6 +61,8 @@ Claude fills this in after each answer.
 | P0-20 | Where Claude's pyright comes from | User-wide pyright: Derek runs `uv tool install "pyright[nodejs]==1.1.414"` in his own terminal, the version `uv.lock` pins, and bumps it by hand to match when Dependabot updates the project's pyright | 2026-10-19 | The only way the plugin gets a language server, and a matching pin keeps Claude in step with CI. |
 | P0-21 | Who merges pull requests | Claude merges: once a pull request's checks are green and the security-reviewer gives PASS, Claude squash-merges it and tells Derek; Rule 3 in `CLAUDE.md` changes to match, and pushes, tags and releases still need Derek's go-ahead | 2026-10-20 | Keeps work moving between Derek's check-ins, with green checks and the security review still gating every merge. |
 | P0-22 | CI workflow when the starter kit is deleted | Delete, note on #4: `ci.yml` goes with the starter-kit folder, and issue #4 (P1-02) gets a comment with the Git command that restores it from history | 2026-10-20 | Git history is the usual record for removed files, and #4 re-pins the actions by commit SHA anyway. |
+| P0-23 | GitHub MCP connector (Phase 0 step 6) | Park for later: Phase 0 finishes without it and issue #62 revisits it in M8, while `gh` keeps handling issues and pull requests | 2026-10-20 | `gh` already covers every GitHub step, so a second long-lived token can wait. |
+| P0-24 | Phase 0 sign-off and what comes next | Tidy, then Phase 1: Derek signed off the Phase 0 report; one pull request adds Dependabot's `pre-commit` updates, bumps ruff's hook to v0.17.1 and logs P0-23 and P0-24, then Phase 1 starts in its own thread | 2026-10-20 | Closes Phase 0 cleanly so Phase 1 starts on an up-to-date toolchain. |
 
 ---
 
