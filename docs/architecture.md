@@ -4,7 +4,7 @@ How the app is put together: its parts, the threads they run on, the sign-in and
 
 ## What exists today
 
-M1 (v0.1.0) builds the app's frame. Everything else in this document is the plan for the milestones after it.
+M1 (v0.1.0) builds the app's frame, and M2 (v0.2.0, in progress) adds signing in to Spotify. Everything else in this document is the plan for the milestones after it.
 
 | Module | What it does now |
 |--------|------------------|
@@ -12,6 +12,7 @@ M1 (v0.1.0) builds the app's frame. Everything else in this document is the plan
 | `app.py` | Starts logging, builds the `QApplication`, runs the single-instance guard and shows the tray icon. The first copy holds a lock file in the user's temp folder and listens on a per-user local socket (a named pipe on Windows); a later launch connects, hangs up and exits, and the first copy shows a tray message. The guard fails open: if the lock can't be used, the app still starts |
 | `ui/tray.py` | Tray icon with a placeholder image, tooltip and the About and Quit menu |
 | `ui/about.py` | About box with version, license and source link |
+| `auth/pkce.py` | Makes the one-time values for a PKCE sign-in (RFC 7636): a 43-character `code_verifier` and a `state` from the `secrets` module, and the S256 `code_challenge`. `state` is compared in constant time. Pure functions, no I/O (M2) |
 | `storage/paths.py` | Finds `%LOCALAPPDATA%\FairShuffle` |
 | `storage/logging_setup.py` | Rotating log files (1 MB, five old files kept). Before a line is written, Authorization headers, Bearer tokens, `code` and any field whose name ends in `token`, `secret`, `verifier` or `client_id` are masked in any letter case, along with exact values such as the Client ID that code registers with `mask_secret()`. The home folder is written as `%USERPROFILE%` so the Windows user name stays out of paths under it. Qt's own warnings and uncaught errors go to the same file |
 
