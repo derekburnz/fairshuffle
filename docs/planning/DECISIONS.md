@@ -63,6 +63,7 @@ Claude fills this in after each answer.
 | P0-22 | CI workflow when the starter kit is deleted | Delete, note on #4: `ci.yml` goes with the starter-kit folder, and issue #4 (P1-02) gets a comment with the Git command that restores it from history | 2026-10-20 | Git history is the usual record for removed files, and #4 re-pins the actions by commit SHA anyway. |
 | P0-23 | GitHub MCP connector (Phase 0 step 6) | Park for later: Phase 0 finishes without it and issue #62 revisits it in M8, while `gh` keeps handling issues and pull requests | 2026-10-20 | `gh` already covers every GitHub step, so a second long-lived token can wait. |
 | P0-24 | Phase 0 sign-off and what comes next | Tidy, then Phase 1: Derek signed off the Phase 0 report; one pull request adds Dependabot's `pre-commit` updates, bumps ruff's hook to v0.17.1 and logs P0-23 and P0-24, then Phase 1 starts in its own thread | 2026-10-20 | Closes Phase 0 cleanly so Phase 1 starts on an up-to-date toolchain. |
+| P1-1 | Required CI checks on `main` (#4) | Yes, from Derek's PC: `lint and type check (Windows)` and `tests (Windows)` join `gitleaks` as required checks in the "Protect main" ruleset, all tied to GitHub Actions; set with `gh` on Derek's typed go-ahead | 2026-10-20 | Required checks on `main` are standard on team repos, so a red check now blocks the merge. |
 
 ---
 
