@@ -55,6 +55,7 @@ Claude fills this in after each answer.
 | P0-14 | Extra clone inside the project folder | Delete it: remove the nested `fairshuffle/` copy that VS Code cloned inside the project folder after confirming it holds nothing beyond GitHub `main` | 2026-10-19 | One working copy per machine; the nested copy lacked the open branches and would be swept in by `git add -A`. |
 | P0-15 | Dependabot comment in `secret-scan.yml` | Add Dependabot: `.github/dependabot.yml` checks GitHub Actions and uv weekly and opens update pull requests labelled `type:ci` or `type:chore` | 2026-10-19 | Automated dependency updates are standard on team repos and keep the SHA-pinned actions current, so the workflow comment becomes true. |
 | P0-16 | Secret-scan workflow token | Read plus comments: `secret-scan.yml` sets the workflow token to `contents: read`, and the scan job also gets `pull-requests: write` so gitleaks can comment on the line where it finds a secret | 2026-10-19 | Least privilege is GitHub's hardening advice for workflow tokens, and the comments keep the scan's feedback useful. |
+| P0-17 | Checkout token in the secret-scan runner | Add it: the checkout step in `secret-scan.yml` sets `persist-credentials: false`, so no token copy stays in the runner's `.git/config` | 2026-10-19 | gitleaks reads its token from the environment, so the saved copy only adds risk; security linters such as zizmor flag it. |
 
 ---
 
