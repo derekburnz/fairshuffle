@@ -47,7 +47,7 @@ Library picks that belong to existing phase cards stay there: the HTTP library i
 
 ## 3. Architecture with real module names
 
-Replaces PROJECT_PLAN section 3. Same boxes as before, now mapped to Python modules.
+Replaces PROJECT_PLAN section 3. Same boxes as before, now mapped to Python modules. From M1 on, [`docs/architecture.md`](../architecture.md) is the living copy that follows the code; this section stays as the approved plan.
 
 ```
               Windows notification area (hidden icons flyout)
