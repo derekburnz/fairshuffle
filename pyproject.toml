@@ -1,5 +1,5 @@
-# Copied to the repo root in Phase 0 step 4 (2026-10-14). Until issue P1-01 adds src/fairshuffle,
-# install with `uv sync --no-install-project` (plain `uv sync` needs the package to exist).
+# Copied to the repo root in Phase 0 step 4 (2026-10-14). Since issue #3 (P1-01) added
+# src/fairshuffle, plain `uv sync` installs the package and its dependencies from uv.lock.
 # Versions are lower bounds checked on PyPI 2026-10-09.
 # Depends on D18 (Python 3.14), D19 (uv), D20 (ruff + pyright + pytest), D21 (PySide6-Essentials),
 # D22 (src layout) and D23 (pre-commit framework). Runtime dependencies for later phases (for example keyring after D10)
