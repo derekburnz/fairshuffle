@@ -337,8 +337,8 @@ Issue #12 "PKCE sign-in"
   -> small commits (feat:, test:, fix:)
   -> tests pass locally, security-reviewer PASS
   -> push (Derek approves) -> pull request "Closes #12"
-  -> CI green -> Derek reviews and approves merge
-  -> squash merge -> branch deleted -> milestone progress updates
+  -> CI green -> Claude squash-merges and tells Derek (P0-21)
+  -> branch deleted -> milestone progress updates
 ```
 
 ### 6.4 Versions
