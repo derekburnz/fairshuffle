@@ -2,11 +2,14 @@
 
 Qt runs headless, so tests never draw on screen and need no desktop session, and every test
 sees fake Spotify settings, so no test can pick up a real Client ID from .env or the shell.
+Each test also gets its own single-instance key, so tests never collide with each other or with
+a FairShuffle copy the developer has running.
 """
 
 from __future__ import annotations
 
 import os
+import uuid
 
 import pytest
 
@@ -24,3 +27,11 @@ def fake_spotify_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give every test obvious fake Spotify settings in place of any real ones."""
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", FAKE_CLIENT_ID)
     monkeypatch.setenv("SPOTIFY_REDIRECT_URI", FAKE_REDIRECT_URI)
+
+
+@pytest.fixture(autouse=True)
+def instance_key(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Give every test a single-instance key of its own in place of the real per-user one."""
+    key = f"FairShuffleTest-{uuid.uuid4().hex[:12]}"
+    monkeypatch.setattr("fairshuffle.app.default_instance_key", lambda: key)
+    return key
