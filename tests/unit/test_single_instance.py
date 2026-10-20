@@ -94,7 +94,7 @@ def test_a_lock_file_left_unreadable_by_a_crash_is_cleared(
 
 
 def test_fairshuffle_still_starts_if_the_lock_folder_is_unusable(
-    qapp: QApplication, instance_key: str, tmp_path: Path
+    qapp: QApplication, instance_key: str, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     not_a_folder = tmp_path / "file.txt"
     not_a_folder.write_text("x")
@@ -102,6 +102,7 @@ def test_fairshuffle_still_starts_if_the_lock_folder_is_unusable(
 
     assert guard.acquire() is True
     assert not guard.listening
+    assert "running without the single-instance guard" in caplog.text
     guard.release()
 
 
