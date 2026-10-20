@@ -2,8 +2,7 @@
 # SECRETS AND PERSONAL DATA (never remove this section)
 # =====================================================================
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 secrets/
 *.pem

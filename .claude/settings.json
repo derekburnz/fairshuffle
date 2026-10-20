@@ -2,11 +2,16 @@
   "permissions": {
     "deny": [
       "Read(./.env)",
-      "Read(./.env.local)",
+      "Read(./.env.*)",
+      "Read(!.env.example)",
       "Read(./secrets/**)",
       "Edit(./.env)",
-      "Edit(./.env.local)",
+      "Edit(./.env.*)",
+      "Edit(!.env.example)",
       "Edit(./secrets/**)",
+      "PowerShell(Get-Content *.env*)",
+      "PowerShell(Select-String *.env*)",
+      "PowerShell(Get-Content *secrets*)",
       "Bash(git push --force*)",
       "Bash(git push -f *)",
       "Bash(git push * --force*)",
