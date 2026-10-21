@@ -197,7 +197,16 @@ def test_a_playlist_listed_twice_appears_once(
     assert len(list_editable_playlists(client, ME_ID)) == 1
 
 
-@pytest.mark.parametrize("page", [{}, {"items": None}, {"items": "x", "next": 5}])
+@pytest.mark.parametrize(
+    "page",
+    [
+        {},
+        {"items": None},
+        {"items": "x", "next": 5},
+        {"items": [], "next": True},  # neither null nor a link
+        {"items": [], "next": 7},
+    ],
+)
 def test_a_page_without_an_items_list_is_refused(
     spotify: responses.RequestsMock, client: SpotifyClient, page: dict[str, Any]
 ) -> None:

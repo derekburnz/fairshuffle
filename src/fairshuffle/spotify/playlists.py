@@ -86,7 +86,10 @@ def _entries(
         items = page.get("items")
         if not isinstance(items, list):
             raise _not_understood()
-        has_next = isinstance(page.get("next"), str) and bool(page["next"])
+        link = page.get("next")
+        if link is not None and not isinstance(link, str):  # neither "no more" nor a link
+            raise _not_understood()
+        has_next = bool(link)
         if len(items) > PAGE_SIZE or (has_next and len(items) < PAGE_SIZE):
             raise _not_understood()
         yield from items
