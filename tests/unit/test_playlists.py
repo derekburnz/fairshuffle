@@ -13,6 +13,7 @@ from responses import matchers
 from fairshuffle.auth.oauth import SpotifyAuth, Tokens
 from fairshuffle.config import load_settings
 from fairshuffle.spotify.client import API_BASE, SpotifyClient, new_session
+from fairshuffle.spotify.errors import SpotifyUnavailable
 from fairshuffle.spotify.models import Playlist
 from fairshuffle.spotify.playlists import PAGE_SIZE, list_editable_playlists
 
@@ -50,18 +51,24 @@ def entry(number: int, **changes: Any) -> dict[str, Any]:
     return playlist
 
 
+def page_query(number: int) -> list[Any]:
+    return [
+        matchers.query_param_matcher({"limit": str(PAGE_SIZE), "offset": str(number * PAGE_SIZE)})
+    ]
+
+
 def add_pages(spotify: responses.RequestsMock, entries: list[dict[str, Any]]) -> None:
     """Serve entries the way Spotify does: pages of 50, each with a next link but the last."""
     pages = [entries[start : start + PAGE_SIZE] for start in range(0, len(entries), PAGE_SIZE)]
     for number, items in enumerate(pages or [[]]):
-        offset = number * PAGE_SIZE
         is_last = number == max(len(pages) - 1, 0)
-        next_url = None if is_last else f"{LIST}?offset={offset + PAGE_SIZE}&limit={PAGE_SIZE}"
-        query = {"limit": str(PAGE_SIZE)} if number == 0 else {"offset": str(offset)}
+        next_url = (
+            None if is_last else f"{LIST}?offset={(number + 1) * PAGE_SIZE}&limit={PAGE_SIZE}"
+        )
         spotify.get(
             LIST,
             json={"items": items, "next": next_url, "total": len(entries), "limit": PAGE_SIZE},
-            match=[matchers.query_param_matcher(query, strict_match=False)],
+            match=page_query(number),
         )
 
 
@@ -144,6 +151,9 @@ def test_a_missing_or_odd_count_is_none(
         entry(1, owner={"id": 5}),
         entry(1, snapshot_id=None),
         entry(1, snapshot_id=""),
+        entry(1, snapshot_id="fake snapshot"),
+        entry(1, snapshot_id="fake\r\nsnapshot"),
+        entry(1, snapshot_id="x" * 257),
     ],
 )
 def test_malformed_entries_are_skipped(
@@ -163,9 +173,10 @@ def test_malformed_entries_are_skipped(
         (None, ""),
         (42, ""),
         ("x" * 300, "x" * 300),  # the picker truncates for display; the data keeps it all
+        ("x" * 10_000, "x" * 499 + "…"),  # but not without limit
     ],
 )
-def test_names_are_cleaned_but_not_cut(
+def test_names_are_cleaned_and_cut_only_when_huge(
     spotify: responses.RequestsMock, client: SpotifyClient, name: Any, shown: str
 ) -> None:
     add_pages(spotify, [entry(1, name=name)])
@@ -190,26 +201,46 @@ def test_an_odd_page_ends_the_list(
     assert list_editable_playlists(client, ME_ID) == []
 
 
-def test_a_next_link_that_repeats_stops_the_loop(
+def test_the_next_link_is_never_followed(
     spotify: responses.RequestsMock, client: SpotifyClient
 ) -> None:
-    again = f"{LIST}?offset=50"
-    first = matchers.query_param_matcher({"limit": str(PAGE_SIZE)})
-    second = matchers.query_param_matcher({"offset": "50"})
-    spotify.get(LIST, json={"items": [entry(1)], "next": again}, match=[first])
-    spotify.get(LIST, json={"items": [entry(2)], "next": again}, match=[second])
+    # Older replies pointed next at /users/{user id}/playlists, which would put the user ID in
+    # the log on a retry. FairShuffle asks for /me/playlists at the next offset instead.
+    first = [entry(number) for number in range(1, PAGE_SIZE + 1)]
+    elsewhere = f"{API_BASE}/users/fake-account-name/playlists?offset=50"
+    spotify.get(LIST, json={"items": first, "next": elsewhere}, match=page_query(0))
+    spotify.get(LIST, json={"items": [entry(51)], "next": None}, match=page_query(1))
 
-    assert len(list_editable_playlists(client, ME_ID)) == 2
-    assert len(spotify.calls) == 2
+    assert len(list_editable_playlists(client, ME_ID)) == PAGE_SIZE + 1
+    assert all(str(call.request.url).startswith(LIST + "?") for call in spotify.calls)
 
 
-def test_a_next_link_to_another_host_is_refused(
-    spotify: responses.RequestsMock, client: SpotifyClient
+@pytest.mark.parametrize(
+    "page",
+    [
+        {"items": [entry(1)], "next": f"{LIST}?offset=50"},  # a short page that claims more
+        {"items": [entry(n) for n in range(PAGE_SIZE + 1)], "next": None},  # more than asked
+    ],
+)
+def test_a_page_that_doesnt_add_up_is_refused(
+    spotify: responses.RequestsMock, client: SpotifyClient, page: dict[str, Any]
 ) -> None:
-    spotify.get(LIST, json={"items": [], "next": "https://example.com/v1/me/playlists"})
+    spotify.get(LIST, json=page)
 
-    with pytest.raises(ValueError, match="Only Spotify Web API links"):
+    with pytest.raises(SpotifyUnavailable, match="doesn't understand"):
         list_editable_playlists(client, ME_ID)
+
+
+def test_the_page_limit_stops_an_endless_list(
+    spotify: responses.RequestsMock, client: SpotifyClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("fairshuffle.spotify.playlists.MAX_PAGES", 2)
+    for number in range(2):
+        items = [entry(number * PAGE_SIZE + n) for n in range(1, PAGE_SIZE + 1)]
+        spotify.get(LIST, json={"items": items, "next": f"{LIST}?more"}, match=page_query(number))
+
+    assert len(list_editable_playlists(client, ME_ID)) == 2 * PAGE_SIZE
+    assert len(spotify.calls) == 2
 
 
 def test_names_stay_out_of_the_log(
@@ -222,16 +253,3 @@ def test_names_stay_out_of_the_log(
 
     assert "Found 1 playlists" in caplog.text
     assert "Secret Crush" not in caplog.text
-
-
-def test_the_page_limit_stops_an_endless_list(
-    spotify: responses.RequestsMock, client: SpotifyClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr("fairshuffle.spotify.playlists.MAX_PAGES", 2)
-    first = matchers.query_param_matcher({"limit": str(PAGE_SIZE)})
-    second = matchers.query_param_matcher({"offset": "50"})
-    spotify.get(LIST, json={"items": [entry(1)], "next": f"{LIST}?offset=50"}, match=[first])
-    spotify.get(LIST, json={"items": [entry(2)], "next": f"{LIST}?offset=100"}, match=[second])
-
-    assert len(list_editable_playlists(client, ME_ID)) == 2
-    assert len(spotify.calls) == 2
