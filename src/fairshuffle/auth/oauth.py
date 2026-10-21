@@ -22,16 +22,18 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 
 from fairshuffle.auth.pkce import CHALLENGE_METHOD, PkceRequest, check_code_verifier
 from fairshuffle.auth.token_store import (
+    TokenStoreError,
     delete_refresh_token,
     load_refresh_token,
     save_refresh_token,
@@ -40,6 +42,7 @@ from fairshuffle.config import SpotifySettings
 from fairshuffle.storage.logging_setup import mask_secret
 
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
+API_HOST = "api.spotify.com"
 TOKEN_URL = "https://accounts.spotify.com/api/token"  # noqa: S105  # a URL, not a password
 # Read the user's own and collaborative playlists, then write the new order back.
 SCOPES = (
@@ -186,6 +189,12 @@ def _read_tokens(reply: dict[str, Any], earlier_refresh_token: str | None) -> To
     )
 
 
+def _check_api_url(url: str) -> None:
+    parts = urlsplit(url)
+    if parts.scheme != "https" or parts.netloc != API_HOST:
+        raise ValueError(f"API calls only go to https://{API_HOST}.")
+
+
 class SpotifyAuth:
     """The sign-in for one run of the app: hands out a current access token and refreshes it.
 
@@ -205,6 +214,9 @@ class SpotifyAuth:
         self._clock = clock
         self._tokens = tokens
         self._expires_at = self._deadline(tokens)
+        # Worker threads share one sign-in. Spotify may rotate the refresh token on each refresh,
+        # so two refreshes at once could spend the old one twice and end the sign-in.
+        self._lock = threading.RLock()
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(scope={sorted(self._tokens.scope)!r})"
@@ -247,36 +259,50 @@ class SpotifyAuth:
 
     def access_token(self) -> str:
         """A current access token, refreshed first if it has run out or is about to."""
-        if self._clock() >= self._expires_at:
-            self.refresh()
-        return self._tokens.access_token
+        with self._lock:
+            if self._clock() >= self._expires_at:
+                self._refresh()
+            return self._tokens.access_token
 
     def refresh(self) -> None:
         """Get a new access token now. Raises SignInRequired if Spotify ended the sign-in."""
+        with self._lock:
+            self._refresh()
+
+    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        """Send one API call with the access token. On a 401, refresh once and send it again.
+
+        The token only ever goes to https://api.spotify.com, so a bad URL (a paging link from
+        somewhere unexpected, say) can't send it to another host or over plain http.
+        """
+        _check_api_url(url)
+        if kwargs.get("verify", True) is not True:
+            raise ValueError("API calls always check Spotify's certificate.")
+        sent_with = self.access_token()
+        response = self._send(method, url, sent_with, kwargs)
+        if response.status_code != 401:
+            return response
+        log.info("Spotify answered 401, so refreshing the access token and trying once more")
+        response.close()
+        with self._lock:
+            if self._tokens.access_token == sent_with:  # another thread may have refreshed already
+                self._refresh()
+            token = self._tokens.access_token
+        return self._send(method, url, token, kwargs)
+
+    def _send(self, method: str, url: str, token: str, kwargs: dict[str, Any]) -> requests.Response:
+        headers = {**(kwargs.get("headers") or {}), "Authorization": f"Bearer {token}"}
+        options = {"timeout": TIMEOUT_SECONDS, **kwargs, "headers": headers}
+        return self._http.request(method, url, **options)
+
+    def _refresh(self) -> None:
+        """Refresh while holding the lock, so two threads never spend the same refresh token."""
         old = self._tokens.refresh_token
         self._tokens = self._refresh_or_forget(self._http, self._settings, old)
         self._expires_at = self._deadline(self._tokens)
         if self._tokens.refresh_token != old:
             save_refresh_token(self._tokens.refresh_token)
         log.info("Refreshed the Spotify access token")
-
-    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
-        """Send one API call with the access token. On a 401, refresh once and send it again."""
-        response = self._send(method, url, kwargs)
-        if response.status_code != 401:
-            return response
-        log.info("Spotify answered 401, so refreshing the access token and trying once more")
-        response.close()
-        self.refresh()
-        return self._send(method, url, kwargs)
-
-    def _send(self, method: str, url: str, kwargs: dict[str, Any]) -> requests.Response:
-        headers = {
-            **(kwargs.get("headers") or {}),
-            "Authorization": f"Bearer {self.access_token()}",
-        }
-        options = {"timeout": TIMEOUT_SECONDS, **kwargs, "headers": headers}
-        return self._http.request(method, url, **options)
 
     def _deadline(self, tokens: Tokens) -> float:
         return self._clock() + max(tokens.expires_in - EXPIRY_MARGIN_SECONDS, 0)
@@ -289,6 +315,11 @@ class SpotifyAuth:
         try:
             return refresh_tokens(http, settings, refresh_token)
         except SignInRequired:
+            pass
+        try:
             delete_refresh_token()
+        except TokenStoreError:  # the user must still be sent back to sign in
+            log.warning("Spotify ended the saved sign-in, but it couldn't be removed")
+        else:
             log.info("Spotify ended the saved sign-in, so it was removed")
-            raise
+        raise SignInRequired("Spotify needs you to sign in again.")

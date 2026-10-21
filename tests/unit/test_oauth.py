@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 from collections.abc import Callable, Iterator
@@ -518,3 +519,82 @@ def test_no_token_text_reaches_any_log_record(
     )
     for fake in ALL_FAKES:
         assert fake not in text
+
+
+# Where the token may go
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://api.spotify.com/v1/me",
+        "https://example.com/v1/me",
+        "https://api.spotify.com.evil.test/v1/me",
+        "https://api.spotify.com:8443/v1/me",
+        "https://user@api.spotify.com/v1/me",
+        "/v1/me",
+    ],
+)
+def test_the_token_only_goes_to_spotifys_api_over_https(
+    spotify: responses.RequestsMock, auth: SpotifyAuth, url: str
+) -> None:
+    with pytest.raises(ValueError, match="api.spotify.com"):
+        auth.request("GET", url)
+
+    assert len(spotify.calls) == 0
+
+
+@pytest.mark.parametrize("verify", [False, "/some/ca.pem"])
+def test_certificate_checks_cannot_be_turned_off(
+    spotify: responses.RequestsMock, auth: SpotifyAuth, verify: object
+) -> None:
+    with pytest.raises(ValueError, match="certificate"):
+        auth.request("GET", API_URL, verify=verify)
+
+    assert len(spotify.calls) == 0
+
+
+def test_a_failed_removal_still_means_sign_in_again(
+    spotify: responses.RequestsMock,
+    http: requests.Session,
+    settings: SpotifySettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken_delete() -> None:
+        raise oauth.TokenStoreError("Could not remove the sign-in from Windows Credential Manager.")
+
+    monkeypatch.setattr(oauth, "delete_refresh_token", broken_delete)
+    keyring.set_password("FairShuffle", "spotify-refresh-token", FAKE_REFRESH)
+    spotify.post(TOKEN_URL, status=400, json={"error": "invalid_grant"})
+
+    with pytest.raises(SignInRequired) as caught:
+        SpotifyAuth.from_store(http, settings)
+
+    assert caught.value.__context__ is None
+
+
+def test_a_401_after_another_thread_refreshed_does_not_refresh_again(
+    spotify: responses.RequestsMock, auth: SpotifyAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two calls fail with the same old token: only the first spends the refresh token."""
+    spotify.post(TOKEN_URL, json=token_reply(FAKE_ACCESS_2, FAKE_REFRESH_2))
+    spotify.get(API_URL, json={}, match=[bearer(FAKE_ACCESS_2)])
+    real_send = SpotifyAuth._send
+
+    def send_then_lose_the_race(self, method, url, token, kwargs):  # type: ignore[no-untyped-def]
+        if token == FAKE_ACCESS:
+            self.refresh()  # another thread refreshes while this call is on the wire
+            return _response(401)
+        return real_send(self, method, url, token, kwargs)
+
+    monkeypatch.setattr(SpotifyAuth, "_send", send_then_lose_the_race)
+
+    assert auth.request("GET", API_URL).status_code == 200
+    assert [call.request.url for call in spotify.calls] == [TOKEN_URL, API_URL]
+
+
+def _response(status: int) -> requests.Response:
+    response = requests.Response()
+    response.status_code = status
+    response.raw = io.BytesIO(b"")
+    return response

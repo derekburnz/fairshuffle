@@ -6,6 +6,7 @@ import os
 import socket
 
 import pytest
+import requests
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 from pytest_socket import SocketConnectBlockedError
@@ -47,3 +48,19 @@ def test_no_test_reads_the_real_env_file() -> None:
 
     assert path is not None
     assert not path.exists()
+
+
+@pytest.mark.filterwarnings("ignore:A test tried to use socket:UserWarning")
+def test_a_proxy_on_this_pc_cannot_carry_a_request_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A loopback proxy is allowed by pytest-socket, so requests must never use one in tests."""
+    with socket.create_server(("127.0.0.1", 0)) as proxy:
+        proxy.setblocking(False)
+        port = proxy.getsockname()[1]
+        monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{port}")
+        monkeypatch.setenv("https_proxy", f"http://127.0.0.1:{port}")
+
+        with pytest.raises(SocketConnectBlockedError):
+            requests.get("https://192.0.2.1/", timeout=1)  # TEST-NET-1, never routed
+
+        with pytest.raises(BlockingIOError):
+            proxy.accept()  # nobody connected to the proxy

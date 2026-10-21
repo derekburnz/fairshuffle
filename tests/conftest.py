@@ -2,6 +2,8 @@
 
 Qt runs headless, so tests never draw on screen and need no desktop session, and every test
 sees fake Spotify settings, so no test can pick up a real Client ID from .env or the shell.
+pytest-socket (pyproject.toml) refuses every connection except to this PC, and no test may use a
+proxy, so no test can reach the real network.
 Each test also gets its own single-instance key and its own logs folder, so tests never collide
 with each other or with a FairShuffle copy the developer has running, and an in-memory password
 store in place of Windows Credential Manager, so no test can read or overwrite a real sign-in.
@@ -45,6 +47,23 @@ def fake_spotify_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give every test obvious fake Spotify settings in place of any real ones."""
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", FAKE_CLIENT_ID)
     monkeypatch.setenv("SPOTIFY_REDIRECT_URI", FAKE_REDIRECT_URI)
+
+
+PROXY_VARIABLES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+
+
+@pytest.fixture(autouse=True)
+def no_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop requests from using a proxy, so pytest-socket's loopback-only rule holds.
+
+    pytest-socket allows 127.0.0.1, and a proxy on 127.0.0.1 (Fiddler, a company agent, a cloud
+    sandbox) would carry a request out to the internet. requests finds proxies in these variables
+    and, on Windows, in the system settings, so both are switched off.
+    """
+    for name in PROXY_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
+    monkeypatch.setattr("requests.utils.getproxies", dict)
 
 
 @pytest.fixture(autouse=True)
