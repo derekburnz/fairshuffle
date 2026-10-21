@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import gc
 import threading
+import weakref
 from collections.abc import Iterator
 from dataclasses import replace
 from typing import Any
@@ -13,7 +15,7 @@ from responses import matchers
 
 from fairshuffle.auth.oauth import SpotifyAuth, Tokens
 from fairshuffle.config import load_settings
-from fairshuffle.spotify.cache import MAX_PLAYLISTS, PlaylistItemsCache
+from fairshuffle.spotify.cache import MAX_ITEMS, MAX_PLAYLISTS, PlaylistItemsCache
 from fairshuffle.spotify.client import API_BASE, SpotifyClient, new_session
 from fairshuffle.spotify.models import Playlist, PlaylistItem
 
@@ -147,8 +149,90 @@ def test_a_failed_read_caches_nothing(
     assert len(cache) == 0
 
 
-def test_the_default_limit_bounds_memory() -> None:
+def test_the_default_limits_bound_memory() -> None:
     assert MAX_PLAYLISTS == 50
+    assert MAX_ITEMS == 50_000
+
+
+@pytest.mark.parametrize("limits", [{"max_playlists": 0}, {"max_items": 0}, {"max_playlists": -1}])
+def test_a_cache_that_could_hold_nothing_is_refused(limits: dict[str, int]) -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        PlaylistItemsCache(**limits)
+
+
+def fake_items(count: int) -> list[PlaylistItem]:
+    return [PlaylistItem(n, f"spotify:track:fake{n}", "track", False) for n in range(count)]
+
+
+def test_the_item_budget_pushes_out_the_oldest_and_skips_a_huge_playlist(
+    client: SpotifyClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sizes = {"fakeplaylist1": 2, "fakeplaylist2": 2, "fakeplaylist3": 4}
+    reads: list[str] = []
+
+    def read(_client: SpotifyClient, playlist_id: str) -> list[PlaylistItem]:
+        reads.append(playlist_id)
+        return fake_items(sizes[playlist_id])
+
+    monkeypatch.setattr("fairshuffle.spotify.cache.read_playlist_items", read)
+    cache = PlaylistItemsCache(max_items=3)
+    cache.items(client, playlist(1))
+    cache.items(client, playlist(2))  # 4 items in all is over 3, so 1 goes
+
+    assert len(cache) == 1
+    assert len(cache.items(client, playlist(3))) == 4  # handed back but too big to keep
+    assert len(cache) == 1
+    cache.items(client, playlist(2))  # still cached
+    assert reads == ["fakeplaylist1", "fakeplaylist2", "fakeplaylist3"]
+
+
+@pytest.mark.parametrize("drop", ["clear", "forget"])
+def test_a_read_under_way_during_a_clear_or_forget_stores_nothing(
+    client: SpotifyClient, monkeypatch: pytest.MonkeyPatch, drop: str
+) -> None:
+    cache = PlaylistItemsCache()
+
+    def read(_client: SpotifyClient, playlist_id: str) -> list[PlaylistItem]:
+        if drop == "clear":
+            cache.clear()  # sign-out lands while the items are on their way
+        else:
+            cache.forget(playlist_id)  # a shuffle lands while the items are on their way
+        return fake_items(2)
+
+    monkeypatch.setattr("fairshuffle.spotify.cache.read_playlist_items", read)
+
+    assert len(cache.items(client, playlist())) == 2  # the caller still gets its answer
+    assert len(cache) == 0
+
+
+def test_another_sign_in_never_sees_the_first_ones_items(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    serve_items(spotify, 1, ["spotify:track:first"])
+    serve_items(spotify, 1, ["spotify:track:second"])
+    cache = PlaylistItemsCache()
+    cache.items(client, playlist(1))
+
+    with new_session() as http:
+        tokens = Tokens("fake-access-token-2", "fake-refresh-token-2", 3600, frozenset())
+        other = SpotifyClient(SpotifyAuth(http, load_settings(), tokens), sleep=lambda _: None)
+        assert uris(cache.items(other, playlist(1))) == ["spotify:track:second"]
+
+    assert len(spotify.calls) == 2
+
+
+def test_the_cache_does_not_keep_an_old_sign_in_alive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("fairshuffle.spotify.cache.read_playlist_items", lambda _c, _i: [])
+    cache = PlaylistItemsCache()
+    with new_session() as http:
+        tokens = Tokens("fake-access-token-3", "fake-refresh-token-3", 3600, frozenset())
+        old = SpotifyClient(SpotifyAuth(http, load_settings(), tokens), sleep=lambda _: None)
+        cache.items(old, playlist())
+        gone = weakref.ref(old)
+        del old
+    gc.collect()
+
+    assert gone() is None
 
 
 def test_it_is_safe_to_share_between_threads(
