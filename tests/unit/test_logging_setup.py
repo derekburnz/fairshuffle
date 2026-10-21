@@ -15,6 +15,7 @@ from fairshuffle.storage.logging_setup import (
     HOME_MASK,
     LOG_FILE_NAME,
     MASK,
+    RedactingFilter,
     mask_secret,
     redact,
     setup_logging,
@@ -311,3 +312,36 @@ def test_a_long_run_of_backslashes_is_masked_quickly() -> None:
 
     assert time.perf_counter() - started < 1.0
     assert masked.startswith(f'secret="{MASK}')
+
+
+def test_secrets_can_be_added_while_other_threads_log() -> None:
+    """Worker threads learn tokens while others log; neither side may trip over the other."""
+    import threading
+
+    log_filter = RedactingFilter(["fake-secret-0"], home=PurePosixPath("/home/fake-user"))
+    errors: list[BaseException] = []
+    stop = threading.Event()
+
+    def keep_logging() -> None:
+        try:
+            while not stop.is_set():
+                record = logging.LogRecord(
+                    "t", logging.INFO, __file__, 1, "x fake-secret-0", None, None
+                )
+                log_filter.filter(record)
+        except BaseException as error:  # noqa: BLE001  # any failure fails the test below
+            errors.append(error)
+
+    workers = [threading.Thread(target=keep_logging) for _ in range(4)]
+    for worker in workers:
+        worker.start()
+    for number in range(2000):
+        log_filter.add_secret(f"fake-secret-{number}")
+    stop.set()
+    for worker in workers:
+        worker.join()
+
+    assert errors == []
+    record = logging.LogRecord("t", logging.INFO, __file__, 1, "fake-secret-1999", None, None)
+    log_filter.filter(record)
+    assert "fake-secret-1999" not in record.msg

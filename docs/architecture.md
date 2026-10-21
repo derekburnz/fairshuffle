@@ -124,7 +124,7 @@ Qt draws the tray and windows on the main thread. Anything that waits on the net
 7. `auth/token_store.py`: refresh token to Credential Manager; access token stays in memory.
 8. `auth/oauth.py` (`SpotifyAuth`): on 401 refresh once and retry; on `400 invalid_grant` delete the token and raise `SignInRequired`. `spotify/client.py` sends every API call through it.
 
-Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Open question for Phase 2 (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The 2026-10-21 re-check found the docs silent on whether `display_name` comes back without them, so the first sign-in on Derek's PC settles it; until then the menu falls back to "Signed in to Spotify".
+Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Open question for Phase 2 (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The 2026-10-21 re-check found the docs silent on whether `display_name` comes back without them, so the first real sign-in settles it; until then the menu falls back to "Signed in to Spotify".
 
 ## Shuffle flow mapped to modules (planned for M3 and M4)
 

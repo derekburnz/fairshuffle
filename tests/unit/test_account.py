@@ -412,3 +412,86 @@ def test_the_display_name_never_reaches_the_log(
 
 def test_the_real_settings_loader_is_the_default() -> None:
     assert AccountController()._settings_loader is load_settings
+
+
+# Quitting and tidying up
+
+
+class RecordingSession(requests.Session):
+    closed_count = 0
+
+    def close(self) -> None:
+        RecordingSession.closed_count += 1
+        super().close()
+
+
+def test_shutdown_waits_for_running_jobs_before_the_lock_goes(seen: list[AccountStatus]) -> None:
+    waits: list[int] = []
+    account = controller(seen, wait_for_jobs=lambda ms: waits.append(ms) or True)
+
+    account.shutdown()
+
+    assert waits == [account_module.SHUTDOWN_WAIT_MS]
+
+
+def test_a_job_still_running_at_quit_is_logged(
+    seen: list[AccountStatus], caplog: pytest.LogCaptureFixture
+) -> None:
+    account = controller(seen, wait_for_jobs=lambda _ms: False)
+
+    account.shutdown()
+
+    assert "still running at quit" in caplog.text
+
+
+def test_quitting_cuts_short_a_wait_between_retries(seen: list[AccountStatus]) -> None:
+    account = controller(seen, wait_for_jobs=lambda _ms: True)
+    account._pause(0)  # before Quit a wait just waits
+
+    account.shutdown()
+
+    with pytest.raises(account_module.SpotifyUnavailable, match="closing"):
+        account._pause(60)  # returns at once instead of after a minute
+
+
+def test_the_session_is_closed_when_a_job_fails_unexpectedly(seen: list[AccountStatus]) -> None:
+    RecordingSession.closed_count = 0
+
+    class Broken(Exception):
+        pass
+
+    FakeSignIn.result = Broken()
+    account = controller(seen, session_factory=RecordingSession)
+
+    with pytest.raises(Broken):  # the synchronous runner lets it through; _Task would catch it
+        account.sign_in()
+
+    assert RecordingSession.closed_count == 1
+
+
+def test_a_failed_refresh_while_reading_the_name_still_signs_in_and_says_why(
+    spotify: responses.RequestsMock, seen: list[AccountStatus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refresh_fails(_client: object) -> str:
+        raise account_module.TokenError("Couldn't reach Spotify's sign-in service (Timeout).")
+
+    monkeypatch.setattr(account_module, "display_name", refresh_fails)
+    account = controller(seen)
+
+    account.sign_in()
+
+    assert account.status.state is AccountState.SIGNED_IN
+    assert account.status.message == "Couldn't reach Spotify's sign-in service (Timeout)."
+    assert account.client is not None
+
+
+def test_the_status_repr_leaves_out_the_name() -> None:
+    status = AccountStatus(
+        AccountState.SIGNED_IN, name="Fake Person", message="Signed in as Fake Person."
+    )
+
+    assert "Fake Person" not in repr(status)
+
+
+def test_the_real_pool_wait_returns_when_nothing_is_running(qapp: object) -> None:
+    assert account_module.wait_for_thread_pool(100)

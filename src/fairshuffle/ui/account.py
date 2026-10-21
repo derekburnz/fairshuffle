@@ -15,9 +15,10 @@ error nobody planned for is shown as a fixed sentence and logged by class name o
 from __future__ import annotations
 
 import logging
+import threading
 import webbrowser
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
 
@@ -30,12 +31,13 @@ from fairshuffle.auth.sign_in import BrowserNotOpened, BrowserSignIn
 from fairshuffle.auth.token_store import TokenStoreError, delete_refresh_token
 from fairshuffle.config import ConfigError, SpotifySettings, load_settings
 from fairshuffle.spotify.client import SpotifyClient, new_session
-from fairshuffle.spotify.errors import AccessDenied, SpotifyError
+from fairshuffle.spotify.errors import AccessDenied, SpotifyError, SpotifyUnavailable
 from fairshuffle.spotify.profile import display_name
 
 log = logging.getLogger(__name__)
 
 UNEXPECTED = "Something went wrong talking to Spotify. Try again, and check the log if it repeats."
+SHUTDOWN_WAIT_MS = 5000  # how long Quit waits for a Spotify task to wrap up
 
 
 class AccountState(Enum):
@@ -51,8 +53,9 @@ class AccountState(Enum):
 @dataclass(frozen=True, slots=True)
 class AccountStatus:
     state: AccountState
-    name: str | None = None  # the display name, only when signed in and Spotify gave one
-    message: str | None = None  # something to tell the user once, as a tray notification
+    # Both can hold the display name, a personal detail, so neither shows in repr or a log line.
+    name: str | None = field(default=None, repr=False)  # only when signed in and Spotify gave one
+    message: str | None = field(default=None, repr=False)  # told to the user once, as a toast
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +103,13 @@ def run_in_thread_pool(job: Callable[[], Any], done: Callable[[Any], None]) -> N
     QThreadPool.globalInstance().start(_Task(job, relay))
 
 
+def wait_for_thread_pool(milliseconds: int) -> bool:
+    """Drop jobs that haven't started, then wait for running ones. True if all finished."""
+    pool = QThreadPool.globalInstance()
+    pool.clear()
+    return pool.waitForDone(milliseconds)
+
+
 class AccountController(QObject):
     """Keeps track of the Spotify sign-in and does the work behind the tray's account items."""
 
@@ -111,6 +121,7 @@ class AccountController(QObject):
         session_factory: Callable[[], requests.Session] = new_session,
         open_browser: Callable[[str], bool] = webbrowser.open,
         runner: Runner = run_in_thread_pool,
+        wait_for_jobs: Callable[[int], bool] = wait_for_thread_pool,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -118,6 +129,10 @@ class AccountController(QObject):
         self._session_factory = session_factory
         self._open_browser = open_browser
         self._run = runner
+        self._wait_for_jobs = wait_for_jobs
+        # Set at Quit. The one thing workers read: it cuts short the client's waits between
+        # retries, so a job doesn't keep the app alive after the icon has gone.
+        self._stopping = threading.Event()
         self._status = AccountStatus(AccountState.CHECKING)
         self._client: SpotifyClient | None = None
         self._http: requests.Session | None = None
@@ -161,10 +176,15 @@ class AccountController(QObject):
         self._begin(AccountState.CHECKING, self._forget)
 
     def shutdown(self) -> None:
-        """Stop any sign-in and let go of the HTTP session before the app quits."""
+        """Stop any sign-in and wait briefly for running jobs, before the app lets go of its
+        single-instance lock. Otherwise a relaunch could run while this copy is still saving a
+        new refresh token."""
+        self._stopping.set()
         self._generation += 1
         self.cancel_sign_in()
         self._drop_client()
+        if not self._wait_for_jobs(SHUTDOWN_WAIT_MS):
+            log.warning("A Spotify task was still running at quit")
 
     def _begin(self, state: AccountState, job: Callable[[], _Outcome]) -> None:
         self._generation += 1
@@ -191,7 +211,8 @@ class AccountController(QObject):
             self._http.close()
         self._client, self._http = None, None
 
-    # The jobs below run on a worker thread. They touch no controller state.
+    # The jobs below run on a worker thread. Apart from the _stopping event they touch no
+    # controller state.
 
     def _resume(self) -> _Outcome:
         try:
@@ -199,24 +220,26 @@ class AccountController(QObject):
         except ConfigError:
             return _Outcome(AccountStatus(AccountState.SETUP_NEEDED))  # no notice at start
         http = self._session_factory()
+        return _closing(http, lambda: self._resume_with(settings, http))
+
+    def _resume_with(self, settings: SpotifySettings, http: requests.Session) -> _Outcome:
         try:
             auth = SpotifyAuth.from_store(http, settings)
         except SignInRequired:
-            http.close()
             return _Outcome(AccountStatus(AccountState.SIGN_IN_AGAIN))
         except (TokenError, TokenStoreError) as error:
-            http.close()
             return _Outcome(AccountStatus(AccountState.UNAVAILABLE, message=str(error)))
         if auth is None:
-            http.close()
             return _Outcome(AccountStatus(AccountState.SIGNED_OUT))
         return self._signed_in(auth, http, notify=False)
 
     def _finish_sign_in(self, attempt: BrowserSignIn, http: requests.Session) -> _Outcome:
+        return _closing(http, lambda: self._sign_in_with(attempt, http))
+
+    def _sign_in_with(self, attempt: BrowserSignIn, http: requests.Session) -> _Outcome:
         try:
             auth = attempt.run()
         except ListenerCancelled:
-            http.close()
             return _Outcome(AccountStatus(AccountState.SIGNED_OUT))
         except (
             CallbackError,
@@ -225,26 +248,31 @@ class AccountController(QObject):
             TokenError,
             TokenStoreError,
         ) as error:
-            http.close()
             return _Outcome(AccountStatus(AccountState.SIGNED_OUT, message=str(error)))
         return self._signed_in(auth, http, notify=True)
 
     def _signed_in(self, auth: SpotifyAuth, http: requests.Session, notify: bool) -> _Outcome:
-        client = SpotifyClient(auth)
+        client = SpotifyClient(auth, sleep=self._pause)
         message = None
         try:
             name = display_name(client)
         except SignInRequired:
-            http.close()
             return _Outcome(AccountStatus(AccountState.SIGN_IN_AGAIN))
-        except AccessDenied as error:
-            name, message = None, str(error)  # usually: not on the User Management list
+        except (AccessDenied, TokenError, TokenStoreError) as error:
+            # Signed in, but the user should hear why: usually the account is missing from User
+            # Management (AccessDenied), or a refresh or saving its new token failed.
+            name, message = None, str(error)
         except SpotifyError:
             name = None  # signed in all the same; the name can wait for the next start
         if notify and message is None:
             message = f"Signed in as {name}." if name else "Signed in to Spotify."
         status = AccountStatus(AccountState.SIGNED_IN, name=name, message=message)
         return _Outcome(status, client, http)
+
+    def _pause(self, seconds: float) -> None:
+        """The client's wait between retries, cut short when the app quits."""
+        if self._stopping.wait(seconds):
+            raise SpotifyUnavailable("FairShuffle is closing.")
 
     def _forget(self) -> _Outcome:
         try:
@@ -253,3 +281,15 @@ class AccountController(QObject):
             return _Outcome(AccountStatus(AccountState.SIGNED_OUT, message=str(error)))
         log.info("Signed out of Spotify")
         return _Outcome(AccountStatus(AccountState.SIGNED_OUT, message="Signed out of Spotify."))
+
+
+def _closing(http: requests.Session, work: Callable[[], _Outcome]) -> _Outcome:
+    """Run work, then close http unless the outcome keeps it, even if work raises."""
+    try:
+        outcome = work()
+    except BaseException:
+        http.close()
+        raise
+    if outcome.http is not http:
+        http.close()
+    return outcome

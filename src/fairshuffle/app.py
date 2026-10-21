@@ -214,7 +214,6 @@ def run() -> int:
     if not instance.acquire():
         return 0  # FairShuffle is already running; that copy shows the user where its icon is
     log.info("FairShuffle %s starting", __version__)
-    app.aboutToQuit.connect(instance.release)
     if not QSystemTrayIcon.isSystemTrayAvailable():
         log.error("The Windows notification area is not available; exiting")
         QMessageBox.critical(
@@ -225,7 +224,9 @@ def run() -> int:
         instance.release()
         return 1
     account = AccountController()
+    # In this order: the account's jobs wrap up before the lock lets a new copy start.
     app.aboutToQuit.connect(account.shutdown)
+    app.aboutToQuit.connect(instance.release)
     tray = TrayIcon(quit_app=app.quit, account=account)
     instance.activation_requested.connect(tray.show_already_running)
     tray.show()

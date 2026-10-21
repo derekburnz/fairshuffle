@@ -61,6 +61,9 @@ class BrowserSignIn:
                     "Windows couldn't open your web browser for the Spotify sign-in page."
                 )
             code = listener.wait(self._timeout)
+        with self._lock:  # a Cancel that came just after the callback still counts
+            if self._cancelled:
+                raise ListenerCancelled("Sign-in was cancelled.")
         return SpotifyAuth.from_code(self._http, self._settings, code, request.verifier)
 
     def cancel(self) -> None:

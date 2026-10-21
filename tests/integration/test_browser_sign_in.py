@@ -19,7 +19,12 @@ import requests
 import responses
 
 from fairshuffle.auth import loopback
-from fairshuffle.auth.loopback import ListenerCancelled, RedirectTarget, SignInDenied
+from fairshuffle.auth.loopback import (
+    ListenerCancelled,
+    LoopbackListener,
+    RedirectTarget,
+    SignInDenied,
+)
 from fairshuffle.auth.pkce import code_challenge
 from fairshuffle.auth.sign_in import BrowserNotOpened, BrowserSignIn
 from fairshuffle.config import SpotifySettings
@@ -163,3 +168,29 @@ def test_cancel_while_waiting_stops_the_sign_in(
 
     with pytest.raises(ListenerCancelled):
         attempt.run()
+
+
+def test_a_cancel_just_after_the_callback_still_stops_the_exchange(
+    spotify: responses.RequestsMock,
+    http: requests.Session,
+    settings: SpotifySettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempt: BrowserSignIn
+    real_wait = LoopbackListener.wait
+
+    def wait_then_cancel(self: LoopbackListener, timeout: float) -> str:
+        code = real_wait(self, timeout)
+        attempt.cancel()  # the user picks Cancel as the browser's callback lands
+        return code
+
+    monkeypatch.setattr(LoopbackListener, "wait", wait_then_cancel)
+    browser = FakeBrowser()
+    attempt = BrowserSignIn(http, settings, browser, timeout=5)
+
+    with pytest.raises(ListenerCancelled):
+        attempt.run()
+    browser.join()
+
+    assert len(spotify.calls) == 0  # no tokens were asked for, so none were saved
+    assert keyring.get_password("FairShuffle", "spotify-refresh-token") is None
