@@ -21,8 +21,8 @@ Claude fills this in after each answer.
 | D9 | Spotify library or own client | B. Own small client on requests (the card added the HTTP library: A spotipy, B own client on requests, C own client on httpx, D own client on urllib) | 2026-10-21 | requests is the maintained industry default, and our own client gives full control of retries, pacing and log redaction. |
 | D10 | Token storage | A. Windows Credential Manager through keyring (refresh token under service FairShuffle; access token in memory only) | 2026-10-21 | The standard way Windows apps keep secrets; matches Rule 2 with the least custom security code. |
 | D11 | Tray UI shape | B. Tray menu plus a small picker window (search, item counts, Refresh, Shuffle and a progress bar); mockup in `docs/screenshots/d11-picker-window.png` | 2026-10-21 | Search and the keyboard handle any library size, there is room for progress and Undo, and it still feels like a tray utility. |
-| D12 | Shuffle strategy | pending (Phase 4) | | |
-| D13 | Backup and undo | pending (Phase 4) | | |
+| D12 | Shuffle strategy | Fast replace by default, reorder as a setting (option D with the default reversed, in Derek's words): a shuffle rewrites the playlist in chunks of 100 (about 5 calls for 500 songs), and a setting switches to reorder in place, which keeps "date added", "added by" and local files and warns that it is slower | 2026-10-21 | Speed matters most day to day; the slower mode stays one setting away for playlists where the added dates matter. |
+| D13 | Backup and undo | A. Automatic backup plus one-click "Undo last shuffle": the order is saved to a local file before the first write and Undo writes it back | 2026-10-21 | The backup adds no Spotify calls (the app already reads every song to shuffle), so it costs no speed, and a fast rewrite cut off halfway needs a quick way back. |
 | D14 | Backlog features | pending (Phase 5) | | |
 | D15 | Distribution format | pending (Phase 8) | | |
 | D16 | Code signing | pending (Phase 8) | | |
@@ -75,6 +75,10 @@ Claude fills this in after each answer.
 | P2-7 | What's next after v0.2.0 | Close M2, then Phase 3: the M2 milestone closed from Derek's PC and Phase 3 (M3, v0.3.0) started in its own thread | 2026-10-21 | M2 was released and checked; listing playlists is the next roadmap step and is read-only, so nothing can be damaged. |
 | P3-1 | Feature branch pushes in M3 | Push freely: Claude pushes M3 feature branches and opens their PRs without asking each time; tags, releases, repo settings and deletions are still asked one at a time | 2026-10-21 | Same as P2-1: the protected `main`, the PR checks and the security review are the real gate, and work keeps moving while Derek is away. |
 | P3-2 | Release v0.3.0 | Tag and release: PR #93 set the version to 0.3.0, Derek checked the picker with his real playlists on his PC, then on his typed go-ahead his PC tagged v0.3.0 on 84d60c3 and published the release (602 tests passed there); one pull request then marks Phase 3 complete | 2026-10-21 | M3's goal (see your playlists) was met and checked on Derek's PC, and a tag per milestone is how the roadmap tracks progress, as with v0.1.0 and v0.2.0. |
+| P3-3 | What's next after v0.3.0 | Close M3, then Phase 4: the M3 milestone closed from Derek's PC and Phase 4 (M4, v0.4.0, the shuffle) started in its own thread | 2026-10-21 | M3 was released and checked; the shuffle is the next roadmap step. |
+| P4-1 | Feature branch pushes in M4 | Push freely: Claude pushes M4 feature branches and opens their PRs without asking each time; tags, releases, repo settings and deletions are still asked one at a time | 2026-10-21 | Same as P2-1 and P3-1: the protected `main`, the PR checks and the security review are the real gate. |
+| P4-2 | Fast mode on a playlist with local files | Ask each time: before a fast shuffle of a playlist holding local files or items Spotify sends no URI for, a dialog says how many would be removed and offers Use keep-order mode, Shuffle fast anyway or Cancel | 2026-10-21 | The API can't add those items back, so neither fast mode nor Undo could restore them; warning before a permanent loss is the standard pattern. |
+| P4-3 | Who writes the Fisher-Yates loop (#25) | A. Claude writes it and explains it line by line in the PR; the Explanatory style from D8 stays for all of M4 | 2026-10-21 | Keeps M4 moving without waiting on Derek, and the PR walkthrough still leaves him able to explain the algorithm. |
 
 ---
 
@@ -275,6 +279,8 @@ Numbers for a 500-song playlist. See PROJECT_PLAN section 2.4.
 
 Recommendation: A first (safe, preserves everything), with D as a later upgrade if big playlists feel slow.
 
+Decided 2026-10-21: Derek wrote "By default use the fastest method that doesn't preserve those things but have a setting to re-order and preserve those but warn its slower". So both paths are built: replace (B) is the default and reorder in place (A) is a setting that says it is slower. The card was closed as D, whose label has the default the other way round; Derek's words are the decision.
+
 ### D13: Backup and undo (Phase 4)
 
 | Option | Pros | Cons |
@@ -284,6 +290,8 @@ Recommendation: A first (safe, preserves everything), with D as a later upgrade 
 | C. No backup | Least work | A failed or unwanted shuffle cannot be reversed |
 
 Recommendation: A.
+
+Decided 2026-10-21: A. Derek asked for a backup only if it doesn't slow the shuffle down; it doesn't, because the items are already read for the shuffle and the backup is one local file. He then confirmed A in words.
 
 ### D14: Backlog features (end of Phase 5, multi-select)
 
