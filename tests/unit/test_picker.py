@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
@@ -14,6 +14,10 @@ from ui_fakes import FakeAccount, HeldJobs, playlist
 from fairshuffle.spotify.errors import SpotifyUnavailable
 from fairshuffle.ui.picker import (
     COUNT_ROLE,
+    EMPTY,
+    KEPT_LIST,
+    LOAD_FAILED,
+    MAX_QUERY_SHOWN,
     ROW_HEIGHT,
     SHUFFLE_LATER,
     SIGNED_OUT,
@@ -22,6 +26,7 @@ from fairshuffle.ui.picker import (
     PlaylistRowDelegate,
     count_text,
     list_summary,
+    no_match,
 )
 from fairshuffle.ui.playlists import PlaylistController
 
@@ -58,7 +63,7 @@ def load(
     jobs: HeldJobs,
     monkeypatch: pytest.MonkeyPatch,
     lists: PlaylistController,
-    playlists: list[object],
+    playlists: Sequence[object],
 ) -> None:
     monkeypatch.setattr(
         "fairshuffle.ui.playlists.list_editable_playlists", lambda _client, _owner: playlists
@@ -391,3 +396,167 @@ def test_the_window_can_be_grabbed(picker: PlaylistPicker) -> None:
     picker.show()
     assert not picker.grab().isNull()
     assert picker.list.indexAt(QPoint(5, 5)).row() in (-1, 0)
+
+
+def showing_placeholder(picker: PlaylistPicker) -> bool:
+    return picker.body.currentWidget() is picker.placeholder
+
+
+def unreachable(_client: object, _owner: str) -> list[object]:
+    raise SpotifyUnavailable("Couldn't reach Spotify (ConnectionError).")
+
+
+def test_the_list_is_shown_while_there_are_rows(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load(jobs, monkeypatch, lists, [playlist(1)])
+
+    assert not showing_placeholder(picker)
+    assert picker.placeholder.textFormat() is Qt.TextFormat.PlainText
+
+
+def test_no_playlists_says_why_and_what_to_do(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load(jobs, monkeypatch, lists, [])
+
+    assert showing_placeholder(picker)
+    assert picker.placeholder.text() == EMPTY
+    assert "own or collaborate on" in EMPTY and "Refresh" in EMPTY
+    assert picker.status_label.text() == ""
+    assert picker.refresh_button.isEnabled()
+
+
+def test_a_first_load_that_fails_says_so_in_the_lists_place(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("fairshuffle.ui.playlists.list_editable_playlists", unreachable)
+    lists.refresh()
+    jobs.release()
+
+    assert showing_placeholder(picker)
+    assert picker.placeholder.text() == LOAD_FAILED
+    assert picker.status_label.text() == "Couldn't reach Spotify (ConnectionError)."
+
+
+def test_a_failed_refresh_keeps_the_last_list_and_says_it_is_old(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load(jobs, monkeypatch, lists, [playlist(1, "Gym Mix")])
+    monkeypatch.setattr("fairshuffle.ui.playlists.list_editable_playlists", unreachable)
+    lists.refresh()
+    jobs.release()
+
+    assert not showing_placeholder(picker)
+    assert shown_names(picker) == ["Gym Mix"]
+    assert picker.status_label.text() == f"Couldn't reach Spotify (ConnectionError). {KEPT_LIST}"
+
+
+def test_a_refresh_that_works_again_clears_the_error(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("fairshuffle.ui.playlists.list_editable_playlists", unreachable)
+    lists.refresh()
+    jobs.release()
+    load(jobs, monkeypatch, lists, [playlist(1)])
+
+    assert not showing_placeholder(picker)
+    assert picker.status_label.text() == "1 playlist you can edit"
+
+
+def test_a_search_with_no_match_says_so(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load(jobs, monkeypatch, lists, [playlist(1, "Gym Mix"), playlist(2, "Road Trip")])
+
+    picker.search.setText("jazz")
+
+    assert showing_placeholder(picker)
+    assert picker.placeholder.text() == "No playlists match \u201cjazz\u201d."
+    assert picker.status_label.text() == "Showing 0 of 2 playlists"
+    picker.search.clear()
+    assert not showing_placeholder(picker)
+    assert picker.status_label.text() == "2 playlists you can edit"
+
+
+def test_a_very_long_search_is_cut_in_the_no_match_line() -> None:
+    text = no_match("x" * 500)
+
+    assert len(text) == len("No playlists match \u201c\u201d.") + MAX_QUERY_SHOWN
+    assert text.endswith("\u2026\u201d.")
+
+
+def test_signing_out_shows_no_placeholder_over_the_sign_in_hint(
+    picker: PlaylistPicker,
+    account: FakeAccount,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load(jobs, monkeypatch, lists, [])
+    account.sign_out()
+
+    assert not showing_placeholder(picker)
+    assert picker.status_label.text() == SIGNED_OUT
+
+
+@pytest.mark.parametrize(
+    ("count", "matching", "text"),
+    [(1, 1, "Showing 1 of 1 playlist"), (1204, 12, "Showing 12 of 1,204 playlists")],
+)
+def test_the_search_summary_reads_naturally(count: int, matching: int, text: str) -> None:
+    assert list_summary(count, matching) == text
+
+
+def test_thousands_of_playlists_fill_the_list_and_search_narrows_it(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    many = [playlist(n, f"Mix {n:04}") for n in range(2000)]
+    inserts: list[int] = []
+    picker.model.rowsInserted.connect(lambda _parent, first, last: inserts.append(last - first + 1))
+
+    load(jobs, monkeypatch, lists, many)
+
+    assert inserts == [2000]  # one model update, not one per row
+    assert picker.list.model().rowCount() == 2000
+    assert picker.status_label.text() == "2,000 playlists you can edit"
+    assert picker.selected_playlist_id() == "fakeplaylist0"
+    picker.search.setText("mix 19")
+    assert picker.list.model().rowCount() == 100  # Mix 1900 to Mix 1999
+    assert picker.status_label.text() == "Showing 100 of 2,000 playlists"
+
+
+def test_a_list_past_200_still_scrolls_to_its_last_row(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load(jobs, monkeypatch, lists, [playlist(n) for n in range(250)])
+    picker.show()
+    last = picker.list.model().index(249, 0)
+
+    picker.list.scrollTo(last)
+
+    assert picker.list.visualRect(last).intersects(picker.list.viewport().rect())
