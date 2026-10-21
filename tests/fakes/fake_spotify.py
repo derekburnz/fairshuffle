@@ -18,9 +18,12 @@ Tests can queue faults with fail_next (a 429 with Retry-After, a 5xx, or a dropp
 before or after the change is applied), run code before a request with before_request (another
 editor changing the playlist mid-shuffle), and read back every call from calls.
 
-Where the docs are silent, the fake picks the strict answer and says so: a stale snapshot_id on
-a reorder is applied (nothing documents a refusal), uris on the query string is refused (the
-app sends them in the body), and an empty uris list clears the playlist.
+Where the docs are silent, the fake says what it does. A reorder with a stale snapshot_id is
+applied, because nothing documents a refusal, so shuffle code must compare snapshot_ids itself
+rather than count on Spotify; reject_stale_snapshot=True makes it refuse instead (400), so tests
+can cover both. uris on the query string is refused (the app sends them in the body), and an
+empty uris list clears the playlist. Every call must carry a Bearer token, or it gets 401; the
+fake doesn't serve the token endpoint, so a test of the refresh-on-401 path needs its own mock.
 """
 
 from __future__ import annotations
@@ -106,6 +109,7 @@ class FakeSpotify:
     calls: list[Call] = field(default_factory=list)
     faults: list[Fault] = field(default_factory=list)
     before_request: Callable[[Call], None] | None = None
+    reject_stale_snapshot: bool = False
     _clock: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
     def __post_init__(self) -> None:
@@ -158,6 +162,8 @@ class FakeSpotify:
         method = (request.method or "GET").upper()
         call = Call(method, url.path, parse_qs(url.query), _body(request))
         self.calls.append(call)
+        if not str(request.headers.get("Authorization", "")).startswith("Bearer "):
+            return _error(401, "No token provided")
         if self.before_request is not None:
             self.before_request(call)
         match = _PLAYLIST.fullmatch(f"{url.scheme}://{url.netloc}{url.path}")
@@ -172,8 +178,10 @@ class FakeSpotify:
         if not playlist.editable:
             return _error(403, "Forbidden")
         reply = self._route(method, bool(match["items"]), playlist, call)
-        if fault is not None:  # applied first, then the reply is lost
+        if fault is not None and reply[0] < 300:  # applied first, then the reply is lost
             return _fault_reply(fault)
+        if fault is not None:  # nothing was applied, so the fault waits for the next request
+            self.faults.insert(0, fault)
         return reply
 
     def _take_fault(self, method: str) -> Fault | None:
@@ -201,8 +209,11 @@ class FakeSpotify:
         }
 
     def _page(self, playlist: FakePlaylist, call: Call) -> Reply:
-        limit = int(call.query.get("limit", ["20"])[0])
-        offset = int(call.query.get("offset", ["0"])[0])
+        try:
+            limit = int(call.query.get("limit", ["20"])[0])
+            offset = int(call.query.get("offset", ["0"])[0])
+        except ValueError:
+            return _error(400, "Invalid limit or offset")
         if not 1 <= limit <= PAGE_SIZE or offset < 0:
             return _error(400, "Invalid limit or offset")
         chunk = playlist.entries[offset : offset + limit]
@@ -269,6 +280,8 @@ class FakeSpotify:
         assert isinstance(start, int) and isinstance(before, int) and isinstance(length, int)
         if not (0 <= start < size and 0 <= before <= size and 1 <= length <= size - start):
             return _error(400, "Range out of bounds")
+        if self.reject_stale_snapshot and body.get("snapshot_id") != playlist.snapshot_id:
+            return _error(400, "Stale snapshot_id")
         playlist.entries = reordered(playlist.entries, start, before, length)
         return self._changed(playlist, 200)
 

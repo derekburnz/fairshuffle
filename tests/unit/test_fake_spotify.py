@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+import requests
 import responses
 from fakes.fake_spotify import FakeSpotify, reordered
 
@@ -331,3 +332,53 @@ def test_calls_are_recorded_with_their_bodies(fake: FakeSpotify, client: Spotify
     (call,) = fake.writes()
     assert call.path == "/v1" + ITEMS
     assert call.body == {"range_start": 0, "insert_before": 2, "snapshot_id": "fake-old"}
+
+
+def test_stale_snapshots_are_applied_unless_told_to_refuse(
+    fake: FakeSpotify, client: SpotifyClient
+) -> None:
+    playlist = fake.add_playlist("fakelist", songs(3))
+    move = {"range_start": 0, "insert_before": 3, "snapshot_id": "fake-old"}
+
+    client.put(ITEMS, move)  # nothing documents a refusal, so the fake applies it
+    fake.reject_stale_snapshot = True
+    with pytest.raises(RequestRejected):
+        client.put(ITEMS, move)
+    client.put(ITEMS, {**move, "snapshot_id": playlist.snapshot_id})
+
+    assert playlist.version == 3
+
+
+def test_an_applied_fault_waits_for_a_write_that_lands(
+    fake: FakeSpotify, client: SpotifyClient
+) -> None:
+    playlist = fake.add_playlist("fakelist", songs(3))
+    fake.fail_next(None, applied=True, method="PUT")
+
+    with pytest.raises(RequestRejected):  # refused, so nothing applied and no fault spent
+        client.put(ITEMS, {"range_start": 9, "insert_before": 0})
+    with pytest.raises(SpotifyUnavailable):
+        client.put(ITEMS, {"range_start": 0, "insert_before": 3})
+
+    assert playlist.version == 2
+
+
+def test_a_call_without_a_token_is_refused(fake: FakeSpotify) -> None:
+    fake.add_playlist("fakelist", songs(3))
+
+    reply = requests.get("https://api.spotify.com/v1/playlists/fakelist", timeout=5)
+
+    assert reply.status_code == 401
+
+
+@pytest.mark.parametrize("query", ["limit=x", "offset=y", "limit=51", "offset=-1"])
+def test_bad_paging_is_refused(fake: FakeSpotify, query: str) -> None:
+    fake.add_playlist("fakelist", songs(3))
+
+    reply = requests.get(
+        f"https://api.spotify.com/v1{ITEMS}?{query}",
+        headers={"Authorization": "Bearer fake-access-token-1"},
+        timeout=5,
+    )
+
+    assert reply.status_code == 400
