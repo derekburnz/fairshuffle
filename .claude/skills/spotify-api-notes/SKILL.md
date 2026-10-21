@@ -30,13 +30,13 @@ Last verified: 2026-10-21 (no Web API changes since the July 2026 changelog; wor
 - Redirect URI: `localhost` is NOT allowed. Use `http://127.0.0.1:PORT/callback` or `http://[::1]:PORT/callback`. HTTP is only allowed for loopback. Matching is exact (case, trailing slash), except that a loopback port may change.
 - The docs allow registering a loopback URI without a port, but the dashboard's Create app form rejects `http` URIs without an explicit port ("Insecure redirect URI"). Register `http://127.0.0.1:8888/callback` with the port.
 - The error Spotify shows for a redirect URI that doesn't match is not documented.
-- Scopes for this app: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`.
+- Scopes for this app: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public` and `user-read-private` (P2-4, for the `/me` display name). The scopes page (read 2026-10-21) lists `user-read-private` as "Read access to user's subscription details", shown to the user as "Access your subscription details", with Search and Get Current User's Profile as the endpoints that need it. Never ask for `user-read-email`.
 
 ## Endpoints we use
 
 | Purpose | Method and path | Notes |
 |---------|-----------------|-------|
-| Current user | `GET /v1/me` | Fields: `account_id` (the stable ID to prefer for linking, May 2026), `display_name` (may be `null`), `id`, `images`, `uri`. `country`, `email`, `explicit_content`, `followers`, `product` are removed for development mode (changelog) and shown as Deprecated on the reference page. The docs list `user-read-private` and `user-read-email` as scopes for `/me` and do not say whether `id` or `display_name` come back with the playlist scopes only. Unverified; check in M2. |
+| Current user | `GET /v1/me` | Fields: `account_id` (the stable ID to prefer for linking, May 2026), `display_name` (may be `null`), `id`, `images`, `uri`. `country`, `email`, `explicit_content`, `followers`, `product` are removed for development mode (changelog) and shown as Deprecated on the reference page. The docs list `user-read-private` and `user-read-email` as scopes for `/me` and do not say whether `id` or `display_name` come back with the playlist scopes only, so FairShuffle asks for `user-read-private` too (P2-4, 2026-10-21). |
 | User's playlists | `GET /v1/me/playlists` | Returns owned and followed playlists; filter by `owner.id` or `collaborative`. `limit` max 50 (default 20), `offset` max 100,000. Use `items.total`; `tracks.total` is deprecated. `GET /users/{id}/playlists` was removed. |
 | Playlist items | `GET /v1/playlists/{id}/items` | Max `limit` 50 (default 20). Owned or collaborative playlists only, else 403. Each entry's item is under `item` (`track` is deprecated). The page's `fields` examples still use the old `track(...)` names. |
 | Reorder items | `PUT /v1/playlists/{id}/items` | Body: `range_start`, `insert_before`, `range_length` (default 1), `snapshot_id`. Returns new `snapshot_id`. Scopes `playlist-modify-public` and `playlist-modify-private`. |
