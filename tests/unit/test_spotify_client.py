@@ -119,6 +119,7 @@ def test_an_empty_reply_is_an_empty_dict(
         "/%2e%2e/%2E%2E/x",
         "/playlists%2Ffake",
         "/playlists%5c..%5cme",
+        "/a\\..\\b",
     ],
 )
 def test_unsafe_paths_are_refused(

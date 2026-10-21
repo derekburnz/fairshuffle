@@ -79,7 +79,12 @@ class SpotifyClient:
         return self.request("GET", path, params=params)
 
     def get_url(self, url: str) -> dict[str, Any]:
-        """GET a full URL Spotify gave us, such as a page's "next" link."""
+        """GET a full URL Spotify gave us.
+
+        Not for paging: a "next" link can name a path FairShuffle didn't choose (it has pointed
+        at /users/{user id}/...), which would then show in the log. Page by offset on a fixed
+        path instead, as spotify/playlists.py does.
+        """
         if not url.startswith(API_BASE + "/"):
             raise ValueError("Only Spotify Web API links can be followed.")
         return self.request("GET", url[len(API_BASE) :])
@@ -211,8 +216,8 @@ def _check_path(path: str) -> None:
     if any(ord(char) < 32 or ord(char) == 127 for char in path):
         raise ValueError("The path has control characters in it.")
     route = path.partition("?")[0]
-    if _ENCODED_STEP.search(route):  # %2e, %2f or %5c would decode to a step up or a new segment
-        raise ValueError("The path has an encoded dot or slash in it.")
+    if "\\" in route or _ENCODED_STEP.search(route):  # a step up or a new segment once decoded
+        raise ValueError("The path has a backslash or an encoded dot or slash in it.")
     if ".." in route.split("/"):
         raise ValueError("The path can't step up with '..'.")
 
