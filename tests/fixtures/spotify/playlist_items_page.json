@@ -1,0 +1,57 @@
+{
+  "href": "https://api.spotify.com/v1/playlists/fakeplaylist1/items?offset=0&limit=50&additional_types=track,episode",
+  "limit": 50,
+  "next": null,
+  "offset": 0,
+  "previous": null,
+  "total": 4,
+  "items": [
+    {
+      "added_at": "2026-01-15T10:00:00Z",
+      "added_by": {"id": "fakeuser", "type": "user", "uri": "spotify:user:fakeuser"},
+      "is_local": false,
+      "item": {
+        "type": "track",
+        "id": "faketrack0000000000001",
+        "name": "Fake Song",
+        "uri": "spotify:track:faketrack0000000000001",
+        "is_local": false,
+        "artists": [{"id": "fakeartist000000000001", "name": "Fake Artist"}]
+      },
+      "track": {
+        "type": "track",
+        "id": "faketrack0000000000001",
+        "uri": "spotify:track:faketrack0000000000001"
+      }
+    },
+    {
+      "added_at": "2026-01-16T10:00:00Z",
+      "added_by": {"id": "fakeuser", "type": "user", "uri": "spotify:user:fakeuser"},
+      "is_local": false,
+      "item": {
+        "type": "episode",
+        "id": "fakeepisode00000000001",
+        "name": "Fake Episode",
+        "uri": "spotify:episode:fakeepisode00000000001"
+      }
+    },
+    {
+      "added_at": null,
+      "added_by": null,
+      "is_local": true,
+      "item": {
+        "type": "track",
+        "id": null,
+        "name": "Fake Local Song",
+        "uri": "spotify:local:Fake+Artist:Fake+Album:Fake+Local+Song:215",
+        "is_local": true
+      }
+    },
+    {
+      "added_at": "2026-01-18T10:00:00Z",
+      "added_by": {"id": "fakeuser", "type": "user", "uri": "spotify:user:fakeuser"},
+      "is_local": false,
+      "item": null
+    }
+  ]
+}

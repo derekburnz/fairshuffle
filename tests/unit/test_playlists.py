@@ -1,9 +1,11 @@
-"""Listing the playlists FairShuffle can reorder, against fake Spotify replies."""
+"""Listing the playlists FairShuffle can reorder and reading their items, against fake replies."""
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -13,9 +15,9 @@ from responses import matchers
 from fairshuffle.auth.oauth import SpotifyAuth, Tokens
 from fairshuffle.config import load_settings
 from fairshuffle.spotify.client import API_BASE, SpotifyClient, new_session
-from fairshuffle.spotify.errors import SpotifyUnavailable
-from fairshuffle.spotify.models import Playlist
-from fairshuffle.spotify.playlists import PAGE_SIZE, list_editable_playlists
+from fairshuffle.spotify.errors import NotOwner, SpotifyUnavailable
+from fairshuffle.spotify.models import Playlist, PlaylistItem
+from fairshuffle.spotify.playlists import PAGE_SIZE, list_editable_playlists, read_playlist_items
 
 LIST = f"{API_BASE}/me/playlists"
 ME_ID = "fakeuser"
@@ -53,7 +55,9 @@ def entry(number: int, **changes: Any) -> dict[str, Any]:
 
 def page_query(number: int) -> list[Any]:
     return [
-        matchers.query_param_matcher({"limit": str(PAGE_SIZE), "offset": str(number * PAGE_SIZE)})
+        matchers.query_param_matcher(
+            {"limit": str(PAGE_SIZE), "offset": str(number * PAGE_SIZE)}, strict_match=False
+        )
     ]
 
 
@@ -253,3 +257,134 @@ def test_names_stay_out_of_the_log(
 
     assert "Found 1 playlists" in caplog.text
     assert "Secret Crush" not in caplog.text
+
+
+# Reading a playlist's items
+
+FIXTURES = Path(__file__).parent.parent / "fixtures" / "spotify"
+ITEMS = f"{API_BASE}/playlists/fakeplaylist1/items"
+
+
+def item_entry(number: int) -> dict[str, Any]:
+    uri = f"spotify:track:faketrack{number:013d}"
+    return {"is_local": False, "item": {"type": "track", "uri": uri}}
+
+
+def test_tracks_episodes_local_files_and_missing_items_are_all_kept(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    page = json.loads((FIXTURES / "playlist_items_page.json").read_text(encoding="utf-8"))
+    spotify.get(
+        ITEMS,
+        json=page,
+        match=[
+            matchers.query_param_matcher(
+                {"limit": str(PAGE_SIZE), "offset": "0", "additional_types": "track,episode"}
+            )
+        ],
+    )
+
+    assert read_playlist_items(client, "fakeplaylist1") == [
+        PlaylistItem(0, "spotify:track:faketrack0000000000001", "track", is_local=False),
+        PlaylistItem(1, "spotify:episode:fakeepisode00000000001", "episode", is_local=False),
+        PlaylistItem(
+            2, "spotify:local:Fake+Artist:Fake+Album:Fake+Local+Song:215", "track", is_local=True
+        ),
+        PlaylistItem(3, None, None, is_local=False),  # no longer available, but keeps its place
+    ]
+
+
+@pytest.mark.parametrize("count", [0, 1, 50, 51, 120])
+def test_positions_run_across_pages(
+    spotify: responses.RequestsMock, client: SpotifyClient, count: int
+) -> None:
+    entries = [item_entry(number) for number in range(count)]
+    pages = [entries[start : start + PAGE_SIZE] for start in range(0, count, PAGE_SIZE)] or [[]]
+    for number, items in enumerate(pages):
+        last = number == len(pages) - 1
+        spotify.get(
+            ITEMS,
+            json={"items": items, "next": None if last else f"{ITEMS}?more"},
+            match=page_query(number),
+        )
+
+    items = read_playlist_items(client, "fakeplaylist1")
+
+    assert [item.position for item in items] == list(range(count))
+    assert [item.uri for item in items] == [entry["item"]["uri"] for entry in entries]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        None,
+        "not an item",
+        {},
+        {"item": "spotify:track:x"},
+        {"item": {"type": "track"}},
+        {"item": {"type": "track", "uri": 5}},
+        {"item": {"type": "track", "uri": "https://example.com/track"}},
+        {"item": {"type": "track", "uri": "spotify:track:fake\nline"}},
+        {"item": {"type": "track", "uri": "spotify:local:" + "x" * 1_000}},
+    ],
+)
+def test_an_unusable_entry_becomes_an_unavailable_item(
+    spotify: responses.RequestsMock, client: SpotifyClient, entry: Any
+) -> None:
+    spotify.get(ITEMS, json={"items": [entry, item_entry(1)], "next": None})
+
+    first, second = read_playlist_items(client, "fakeplaylist1")
+
+    assert first.uri is None
+    assert first.is_local is False
+    assert second.position == 1
+
+
+@pytest.mark.parametrize(
+    ("kind", "kept"), [("track", "track"), ("episode", "episode"), ("show", None), (None, None)]
+)
+def test_only_known_kinds_are_kept(
+    spotify: responses.RequestsMock, client: SpotifyClient, kind: Any, kept: str | None
+) -> None:
+    entry = {"item": {"type": kind, "uri": "spotify:track:faketrack0000000000001"}}
+    spotify.get(ITEMS, json={"items": [entry]})
+
+    assert read_playlist_items(client, "fakeplaylist1")[0].kind == kept
+
+
+def test_the_deprecated_track_field_is_not_read(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    entry = {"track": {"type": "track", "uri": "spotify:track:faketrack0000000000001"}}
+    spotify.get(ITEMS, json={"items": [entry]})
+
+    assert read_playlist_items(client, "fakeplaylist1")[0].uri is None
+
+
+@pytest.mark.parametrize("playlist_id", ["", "../me", "fake/playlist", "fake?x=1", "x" * 65])
+def test_an_odd_playlist_id_never_reaches_a_path(client: SpotifyClient, playlist_id: str) -> None:
+    with pytest.raises(ValueError, match="isn't a Spotify playlist ID"):
+        read_playlist_items(client, playlist_id)
+
+
+def test_a_playlist_you_dont_own_raises_not_owner(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    spotify.get(ITEMS, status=403, json={"error": {"status": 403, "message": "Forbidden"}})
+
+    with pytest.raises(NotOwner):
+        read_playlist_items(client, "fakeplaylist1")
+
+
+def test_items_stay_out_of_the_log(
+    spotify: responses.RequestsMock, client: SpotifyClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    page = json.loads((FIXTURES / "playlist_items_page.json").read_text(encoding="utf-8"))
+    spotify.get(ITEMS, json=page)
+
+    with caplog.at_level(logging.DEBUG):
+        read_playlist_items(client, "fakeplaylist1")
+
+    assert "Read 4 playlist items" in caplog.text
+    assert "spotify:track" not in caplog.text
+    assert "Fake Local Song" not in caplog.text
