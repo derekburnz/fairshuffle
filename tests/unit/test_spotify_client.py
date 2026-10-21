@@ -11,6 +11,7 @@ import requests
 import responses
 from responses import matchers
 
+from fairshuffle import __version__
 from fairshuffle.auth.oauth import SignInRequired, SpotifyAuth, Tokens
 from fairshuffle.config import load_settings
 from fairshuffle.spotify import errors
@@ -68,7 +69,10 @@ def test_a_get_returns_the_json_with_our_headers(
         json={"display_name": "Fake User"},
         match=[
             matchers.header_matcher(
-                {"Authorization": f"Bearer {FAKE_ACCESS}", "User-Agent": "FairShuffle/0.1.0"}
+                {
+                    "Authorization": f"Bearer {FAKE_ACCESS}",
+                    "User-Agent": f"FairShuffle/{__version__}",
+                }
             )
         ],
     )

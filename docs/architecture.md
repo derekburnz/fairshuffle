@@ -4,7 +4,7 @@ How the app is put together: its parts, the threads they run on, the sign-in and
 
 ## What exists today
 
-M1 (v0.1.0) builds the app's frame, and M2 (v0.2.0, in progress) adds signing in to Spotify. Everything else in this document is the plan for the milestones after it.
+M1 (v0.1.0) built the app's frame, and M2 (v0.2.0) added signing in to Spotify. Everything else in this document is the plan for the milestones after it.
 
 | Module | What it does now |
 |--------|------------------|
