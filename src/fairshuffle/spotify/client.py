@@ -98,11 +98,10 @@ class SpotifyClient:
         body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Send one call, retrying as the module docstring describes, and return its JSON."""
-        if not path.startswith("/") or path.startswith("//"):
-            raise ValueError("The path must start with a single /, as in /me.")
+        _check_path(path)
         method = method.upper()
         is_read = method in _READS
-        what = f"{method} {path}"
+        what = f"{method} {path.partition('?')[0]}"  # a next link's query stays out of the logs
         for attempt in range(self._policy.max_attempts):
             last = attempt == self._policy.max_attempts - 1
             response = self._send(method, path, params, body, what, is_read, last)
@@ -192,19 +191,36 @@ class SpotifyClient:
                 "Spotify refused access" + reason + ". In development mode, check that your "
                 "account is on the app's User Management list."
             )
-        if status >= 400:
+        if status >= 300:  # 3xx too: SpotifyAuth never follows a redirect
             raise RequestRejected(
                 f"Spotify refused the request ({status}){_reason(response)}.", status
             )
         if status == 204 or not response.content:
             return {}
-        try:
-            data: Any = response.json()
-        except ValueError:
-            raise SpotifyUnavailable("Spotify sent a reply that isn't JSON.") from None
-        if not isinstance(data, dict):
+        data = _json_object(response)
+        if data is None:
             raise SpotifyUnavailable("Spotify sent a reply FairShuffle doesn't understand.")
         return data
+
+
+def _check_path(path: str) -> None:
+    """Refuse a path that could leave /v1, forge a log line or name another host."""
+    if not path.startswith("/") or path.startswith("//"):
+        raise ValueError("The path must start with a single /, as in /me.")
+    if any(ord(char) < 32 or ord(char) == 127 for char in path):
+        raise ValueError("The path has control characters in it.")
+    if ".." in path.partition("?")[0].split("/"):
+        raise ValueError("The path can't step up with '..'.")
+
+
+def _json_object(response: requests.Response) -> dict[str, Any] | None:
+    """The reply's JSON object, or None. The parse error is dropped here, not chained on, because
+    it carries the whole response body."""
+    try:
+        data: Any = response.json()
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _reason(response: requests.Response) -> str:

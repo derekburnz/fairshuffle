@@ -300,8 +300,16 @@ class SpotifyAuth:
         return self._send(method, url, token, kwargs)
 
     def _send(self, method: str, url: str, token: str, kwargs: dict[str, Any]) -> requests.Response:
+        check_session(self._http)  # again here, in case verify was switched off after setup
         headers = {**(kwargs.get("headers") or {}), "Authorization": f"Bearer {token}"}
-        options = {"timeout": TIMEOUT_SECONDS, **kwargs, "headers": headers}
+        # Never follow a redirect: requests would drop the token for another host, but it would
+        # still resend a change's body there.
+        options = {
+            "timeout": TIMEOUT_SECONDS,
+            **kwargs,
+            "headers": headers,
+            "allow_redirects": False,
+        }
         return self._http.request(method, url, **options)
 
     def _refresh(self) -> None:

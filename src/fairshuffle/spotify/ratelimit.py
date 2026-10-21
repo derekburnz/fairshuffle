@@ -30,6 +30,12 @@ class RetryPolicy:
     max_delay: float = 30.0  # the backoff ceiling never goes above this
     max_retry_after: float = 60.0  # a longer Retry-After is handed to the user instead of waited
 
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_attempts <= 10:
+            raise ValueError("max_attempts must be between 1 and 10.")
+        if min(self.base_delay, self.max_delay, self.max_retry_after) < 0:
+            raise ValueError("Delays can't be negative.")
+
 
 def retry_after_seconds(response: requests.Response) -> float | None:
     """Spotify's Retry-After in seconds, or None if it is missing or unreadable."""

@@ -101,10 +101,32 @@ def test_an_empty_reply_is_an_empty_dict(
     assert client.put("/playlists/fake-playlist-id/items", {}) == {}
 
 
-@pytest.mark.parametrize("path", ["me", "//evil.test/me", "https://api.spotify.com/v1/me", ""])
-def test_a_path_must_start_with_one_slash(client: SpotifyClient, path: str) -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "me",
+        "//evil.test/me",
+        "https://api.spotify.com/v1/me",
+        "",
+        "/me\r\nINFO forged line",
+        "/me\x00",
+        "/../../x",
+        "/playlists/../me",
+    ],
+)
+def test_unsafe_paths_are_refused(
+    spotify: responses.RequestsMock, client: SpotifyClient, path: str
+) -> None:
     with pytest.raises(ValueError, match="path"):
         client.get(path)
+
+    assert len(spotify.calls) == 0
+
+
+def test_dots_in_a_query_are_fine(spotify: responses.RequestsMock, client: SpotifyClient) -> None:
+    spotify.get(ME, json={}, match=[matchers.query_param_matcher({"fields": "a..b"})])
+
+    assert client.get_url(f"{ME}?fields=a..b") == {}
 
 
 def test_a_next_link_from_spotify_can_be_followed(
@@ -329,6 +351,17 @@ def test_a_403_elsewhere_points_at_user_management(
     assert not isinstance(caught.value, NotOwner)
 
 
+def test_a_redirect_is_never_followed(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    spotify.put(ITEMS, status=307, headers={"Location": "https://192.0.2.1/steal"})
+
+    with pytest.raises(RequestRejected, match="307"):
+        client.put("/playlists/fake-playlist-id/items", {"uris": []})
+
+    assert len(spotify.calls) == 1
+
+
 @pytest.mark.parametrize("status", [400, 404, 413])
 def test_other_client_errors_are_rejected_without_retrying(
     spotify: responses.RequestsMock, client: SpotifyClient, waits: list[float], status: int
@@ -377,8 +410,10 @@ def test_a_reply_that_isnt_a_json_object_is_refused(
 ) -> None:
     spotify.get(ME, body=body, content_type="application/json")
 
-    with pytest.raises(SpotifyUnavailable):
+    with pytest.raises(SpotifyUnavailable) as caught:
         client.get("/me")
+
+    assert caught.value.__context__ is None  # the parse error holds the whole body
 
 
 def test_every_spotify_error_comes_from_one_place() -> None:
@@ -407,3 +442,31 @@ def test_logs_name_the_path_but_never_the_query_or_body(
     assert "GET /playlists/fake-playlist-id/items" in text
     assert "fake-secret-field" not in text
     assert FAKE_ACCESS not in text
+
+
+def test_a_next_links_query_stays_out_of_the_logs(
+    spotify: responses.RequestsMock,
+    client: SpotifyClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="fairshuffle")
+    spotify.get(ITEMS, status=503)
+    spotify.get(ITEMS, json={})
+
+    client.get_url(f"{ITEMS}?offset=50&fields=fake-secret-field")
+
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "GET /playlists/fake-playlist-id/items: waiting" in text
+    assert "fake-secret-field" not in text
+    assert "offset" not in text
+
+
+def test_turning_certificate_checks_off_later_is_still_refused(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    client._auth._http.verify = False  # type: ignore[attr-defined]  # reaching in, as a bug would
+
+    with pytest.raises(ValueError, match="certificate"):
+        client.get("/me")
+
+    assert len(spotify.calls) == 0

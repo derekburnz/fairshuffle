@@ -79,3 +79,18 @@ def test_the_backoff_is_jittered_between_zero_and_the_ceiling() -> None:
 
     assert all(0 <= wait <= 8 for wait in waits)
     assert len(set(waits)) > 100  # spread out, not one fixed value
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"max_attempts": 0},
+        {"max_attempts": 11},
+        {"base_delay": -1.0},
+        {"max_delay": -1.0},
+        {"max_retry_after": -1.0},
+    ],
+)
+def test_an_unworkable_policy_is_refused(settings: dict[str, float]) -> None:
+    with pytest.raises(ValueError):
+        RetryPolicy(**settings)  # type: ignore[arg-type]
