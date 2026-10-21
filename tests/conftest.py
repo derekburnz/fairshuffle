@@ -3,7 +3,8 @@
 Qt runs headless, so tests never draw on screen and need no desktop session, and every test
 sees fake Spotify settings, so no test can pick up a real Client ID from .env or the shell.
 Each test also gets its own single-instance key and its own logs folder, so tests never collide
-with each other or with a FairShuffle copy the developer has running.
+with each other or with a FairShuffle copy the developer has running, and an in-memory password
+store in place of Windows Credential Manager, so no test can read or overwrite a real sign-in.
 """
 
 from __future__ import annotations
@@ -13,7 +14,11 @@ import os
 import uuid
 from collections.abc import Iterator
 
+import keyring
 import pytest
+from keyring.backend import KeyringBackend
+from keyring.backends import fail
+from keyring.errors import PasswordDeleteError
 from PySide6.QtCore import qInstallMessageHandler
 
 from fairshuffle.storage import logging_setup
@@ -23,6 +28,12 @@ from fairshuffle.storage.logging_setup import stop_logging
 # CI sets it too (ci.yml). setdefault keeps a developer's own choice, for example "windows"
 # to watch a tray test on screen.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+# Until a test's in-memory store is in place, and in any child process a test starts, keyring
+# uses its "fail" backend, which refuses every call. So nothing can reach the real Credential
+# Manager, and keyring never runs its search for the machine's own backend.
+os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
+keyring.set_keyring(fail.Keyring())
 
 FAKE_CLIENT_ID = "fake-client-id-for-tests"
 FAKE_REDIRECT_URI = "http://127.0.0.1:8888/callback"
@@ -56,3 +67,32 @@ def isolated_logging(
     logging_setup._masked_values.clear()
     qInstallMessageHandler(None)  # app.start_logging sends Qt's messages to Python logging
     root.setLevel(level)
+
+
+class MemoryKeyring(KeyringBackend):
+    """A password store that lives only as long as one test."""
+
+    priority = 1  # type: ignore[assignment]  # keyring's class property; any value works here
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.passwords: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.passwords.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.passwords[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        if self.passwords.pop((service, username), None) is None:
+            raise PasswordDeleteError("not found")
+
+
+@pytest.fixture(autouse=True)
+def memory_keyring() -> Iterator[MemoryKeyring]:
+    """Give the test an in-memory password store, then go back to the one that refuses."""
+    fake = MemoryKeyring()
+    keyring.set_keyring(fake)
+    yield fake
+    keyring.set_keyring(fail.Keyring())
