@@ -68,6 +68,7 @@ Claude fills this in after each answer.
 | P1-3 | What's next now that v0.1.0 is out | Tidy, then Phase 2: one issue (#72) and one pull request log P1-2 and P1-3 and mark Phase 1 complete, M1 is closed, then Phase 2 starts in its own thread | 2026-10-20 | Closing a milestone before the next one starts keeps the board and the decision log honest, as at the end of Phase 0 (P0-24). |
 | P2-1 | Feature branch pushes in M2 | Push freely: Claude pushes feature branches for the rest of M2 without asking and says when each PR is up; tags, releases, repo settings and deletions are still asked one at a time | 2026-10-21 | The protected `main` and the PR checks are the real gate, as on company teams, and work keeps moving while Derek is away. |
 | P2-2 | How tests fake Spotify's HTTP replies and block real network | responses (fake replies for requests) plus pytest-socket (any socket other than 127.0.0.1 fails the test); both dev-only | 2026-10-21 | Current, widely used tools, so the tests read like ones at a company, and the guard is configuration instead of custom code. |
+| P2-3 | How config.py reads the Client ID in development | python-dotenv reads the gitignored `.env` in the project folder; real environment variables win over the file; the Client ID goes to `mask_secret()` at once. The release build's answer stays with D17 | 2026-10-21 | The usual Python library for `.env` files, small and current, and it keeps the plan and setup guide as written. |
 
 ---
 
