@@ -15,8 +15,9 @@ class Playlist:
     """
 
     id: str
-    name: str
-    owner_id: str
+    # The name and the owner's user ID are the user's own data, so neither shows in repr.
+    name: str = field(repr=False)
+    owner_id: str = field(repr=False)
     collaborative: bool
     snapshot_id: str
     item_count: int | None

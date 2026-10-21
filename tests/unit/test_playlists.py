@@ -434,3 +434,10 @@ def test_an_items_repr_leaves_out_the_uri() -> None:
     item = PlaylistItem(0, "spotify:local:Fake+Artist:Fake+Album:Fake+Song:200", "track", True)
 
     assert "Fake" not in repr(item)
+
+
+def test_a_playlists_repr_leaves_out_its_name_and_owner() -> None:
+    text = repr(Playlist("fakeplaylist1", "Secret Crush Songs", "fake-account-name", False, "s", 1))
+
+    assert "Secret Crush" not in text
+    assert "fake-account-name" not in text

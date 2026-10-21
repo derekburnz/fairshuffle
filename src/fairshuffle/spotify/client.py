@@ -81,6 +81,10 @@ class SpotifyClient:
         self._sleep = sleep
         self._rng = rng or random.Random()  # noqa: S311  # jitter, not security
 
+    def end_sign_in(self) -> None:
+        """Stop this client for good (see SpotifyAuth.end). Call it from a worker thread."""
+        self._auth.end()
+
     def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """GET a path under /v1, such as "/me", and return the JSON reply."""
         return self.request("GET", path, params=params)

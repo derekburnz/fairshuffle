@@ -173,7 +173,8 @@ class AccountController(QObject):
     def sign_out(self) -> None:
         """Forget the sign-in here and remove it from Credential Manager."""
         self.cancel_sign_in()
-        self._begin(AccountState.CHECKING, self._forget)
+        old = self._client  # a worker (a playlist load, say) may still be using it
+        self._begin(AccountState.CHECKING, lambda: self._forget(old))
 
     def shutdown(self) -> None:
         """Stop any sign-in and wait briefly for running jobs, before the app lets go of its
@@ -274,7 +275,11 @@ class AccountController(QObject):
         if self._stopping.wait(seconds):
             raise SpotifyUnavailable("FairShuffle is closing.")
 
-    def _forget(self) -> _Outcome:
+    def _forget(self, old: SpotifyClient | None) -> _Outcome:
+        if old is not None:
+            # First, so a refresh another worker is in the middle of can't save a new token
+            # after the delete below and quietly sign this account back in at the next start.
+            old.end_sign_in()
         try:
             delete_refresh_token()
         except TokenStoreError as error:  # signed out here, but the entry is still saved
