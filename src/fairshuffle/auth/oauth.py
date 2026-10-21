@@ -125,8 +125,15 @@ def refresh_tokens(http: requests.Session, settings: SpotifySettings, refresh_to
     return _read_tokens(reply, earlier_refresh_token=refresh_token)
 
 
+def check_session(http: requests.Session) -> None:
+    """Refuse a session that has certificate checks turned off, since tokens travel over it."""
+    if http.verify is not True:
+        raise ValueError("Sign-in needs a session that checks Spotify's certificate.")
+
+
 def _post_token(http: requests.Session, form: dict[str, str]) -> dict[str, Any]:
     """POST the form to the token endpoint and return the JSON reply, or raise."""
+    check_session(http)
     try:
         # No redirects: the form holds a code or a refresh token, so it only ever goes to Spotify.
         response = http.post(
@@ -209,6 +216,7 @@ class SpotifyAuth:
         tokens: Tokens,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        check_session(http)
         self._http = http
         self._settings = settings
         self._clock = clock
@@ -217,6 +225,7 @@ class SpotifyAuth:
         # Worker threads share one sign-in. Spotify may rotate the refresh token on each refresh,
         # so two refreshes at once could spend the old one twice and end the sign-in.
         self._lock = threading.RLock()
+        self._signed_out = False  # set once Spotify ends the sign-in, so no thread asks again
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(scope={sorted(self._tokens.scope)!r})"
@@ -291,14 +300,28 @@ class SpotifyAuth:
         return self._send(method, url, token, kwargs)
 
     def _send(self, method: str, url: str, token: str, kwargs: dict[str, Any]) -> requests.Response:
+        check_session(self._http)  # again here, in case verify was switched off after setup
         headers = {**(kwargs.get("headers") or {}), "Authorization": f"Bearer {token}"}
-        options = {"timeout": TIMEOUT_SECONDS, **kwargs, "headers": headers}
+        # Never follow a redirect: requests would drop the token for another host, but it would
+        # still resend a change's body there.
+        options = {
+            "timeout": TIMEOUT_SECONDS,
+            **kwargs,
+            "headers": headers,
+            "allow_redirects": False,
+        }
         return self._http.request(method, url, **options)
 
     def _refresh(self) -> None:
         """Refresh while holding the lock, so two threads never spend the same refresh token."""
+        if self._signed_out:
+            raise SignInRequired("Spotify needs you to sign in again.")
         old = self._tokens.refresh_token
-        self._tokens = self._refresh_or_forget(self._http, self._settings, old)
+        try:
+            self._tokens = self._refresh_or_forget(self._http, self._settings, old)
+        except SignInRequired:
+            self._signed_out = True
+            raise
         self._expires_at = self._deadline(self._tokens)
         if self._tokens.refresh_token != old:
             save_refresh_token(self._tokens.refresh_token)

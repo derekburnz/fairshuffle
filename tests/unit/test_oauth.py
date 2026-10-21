@@ -598,3 +598,26 @@ def _response(status: int) -> requests.Response:
     response.status_code = status
     response.raw = io.BytesIO(b"")
     return response
+
+
+def test_a_session_without_certificate_checks_is_refused(settings: SpotifySettings) -> None:
+    with requests.Session() as insecure:
+        insecure.verify = False
+
+        with pytest.raises(ValueError, match="certificate"):
+            SpotifyAuth(insecure, settings, Tokens(FAKE_ACCESS, FAKE_REFRESH, 3600, frozenset()))
+        with pytest.raises(ValueError, match="certificate"):
+            refresh_tokens(insecure, settings, FAKE_REFRESH)
+
+
+def test_once_the_sign_in_has_ended_nobody_asks_spotify_again(
+    spotify: responses.RequestsMock, auth: SpotifyAuth
+) -> None:
+    spotify.post(TOKEN_URL, status=400, json={"error": "invalid_grant"})
+
+    with pytest.raises(SignInRequired):
+        auth.refresh()
+    with pytest.raises(SignInRequired):
+        auth.refresh()  # another worker thread that was waiting on the lock
+
+    assert len(spotify.calls) == 1
