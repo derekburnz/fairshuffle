@@ -20,7 +20,7 @@ Claude fills this in after each answer.
 | D8 | Teaching style | A. Explanatory | 2026-10-09 | Claude explains each implementation choice; switch to Learning per phase if wanted. |
 | D9 | Spotify library or own client | B. Own small client on requests (the card added the HTTP library: A spotipy, B own client on requests, C own client on httpx, D own client on urllib) | 2026-10-21 | requests is the maintained industry default, and our own client gives full control of retries, pacing and log redaction. |
 | D10 | Token storage | A. Windows Credential Manager through keyring (refresh token under service FairShuffle; access token in memory only) | 2026-10-21 | The standard way Windows apps keep secrets; matches Rule 2 with the least custom security code. |
-| D11 | Tray UI shape | pending (Phase 3) | | |
+| D11 | Tray UI shape | B. Tray menu plus a small picker window (search, item counts, Refresh, Shuffle and a progress bar); mockup in `docs/screenshots/d11-picker-window.png` | 2026-10-21 | Search and the keyboard handle any library size, there is room for progress and Undo, and it still feels like a tray utility. |
 | D12 | Shuffle strategy | pending (Phase 4) | | |
 | D13 | Backup and undo | pending (Phase 4) | | |
 | D14 | Backlog features | pending (Phase 5) | | |
@@ -72,6 +72,8 @@ Claude fills this in after each answer.
 | P2-4 | Scopes for the "Signed in as" name | Add `user-read-private` now: sign-in asks for the four playlist scopes plus `user-read-private`, so `GET /me` can return `display_name`; `user-read-email` is never asked for | 2026-10-21 | Spotify's scopes page lists `user-read-private` as the scope `/me` needs and the docs don't say the name comes back without it, so asking for it avoids a guess; the fields it adds besides the name are gone for development mode apps. |
 | P2-5 | Client ID posted in the project chat | Keep it: the same Spotify app and Client ID stay in use and the ID stays only in Derek's `.env`; nothing was saved by Claude | 2026-10-21 | A Client ID is a public identifier under PKCE (it shows in every sign-in URL), development mode limits the app to listed users, and Spotify can't change an app's Client ID short of recreating the app. |
 | P2-6 | Release v0.2.0 | Prep, then tag and release: PR #84 set the version to 0.2.0, then on Derek's typed go-ahead his PC tagged v0.2.0 on 960b168 and published the release; one pull request then marks Phase 2 complete | 2026-10-21 | M2's goal (sign in and sign out securely) was met and checked on Derek's PC, and a tag per milestone is how the roadmap tracks progress, as with v0.1.0. |
+| P2-7 | What's next after v0.2.0 | Close M2, then Phase 3: the M2 milestone closed from Derek's PC and Phase 3 (M3, v0.3.0) started in its own thread | 2026-10-21 | M2 was released and checked; listing playlists is the next roadmap step and is read-only, so nothing can be damaged. |
+| P3-1 | Feature branch pushes in M3 | Push freely: Claude pushes M3 feature branches and opens their PRs without asking each time; tags, releases, repo settings and deletions are still asked one at a time | 2026-10-21 | Same as P2-1: the protected `main`, the PR checks and the security review are the real gate, and work keeps moving while Derek is away. |
 
 ---
 
@@ -256,6 +258,8 @@ Recommendation: A.
 | C. Full main window that minimizes to tray | Most room for features | Heavier. Loses the "lives in the tray" feel. | High |
 
 Recommendation: B. `ui-designer` shows mockups of each before you choose.
+
+Decided 2026-10-21: B. The `ui-designer` mockups of all three options were shown first; the chosen one is `docs/screenshots/d11-picker-window.png` (fake data, rendered with PySide6). The tray menu keeps its account line, gains "Shuffle a playlist..." (the ellipsis is the Windows sign that it opens a window) and the picker opens at about 380 x 520 with search, the playlist list with item counts, Refresh and Shuffle.
 
 ### D12: Shuffle strategy (Phase 4)
 
