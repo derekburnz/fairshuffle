@@ -18,8 +18,8 @@ Claude fills this in after each answer.
 | D6 | Workflow level | A. Full team workflow | 2026-10-09 | Closest to a real job and the best resume signal. |
 | D7 | Claude Code toolkit | All recommended plus docs-writer and pr-review-toolkit; not commit-commands | 2026-10-09 | Full toolkit; commit-commands overlaps ship-change. |
 | D8 | Teaching style | A. Explanatory | 2026-10-09 | Claude explains each implementation choice; switch to Learning per phase if wanted. |
-| D9 | Spotify library or own client | pending (Phase 2) | | |
-| D10 | Token storage | pending (Phase 2) | | |
+| D9 | Spotify library or own client | B. Own small client on requests (the card added the HTTP library: A spotipy, B own client on requests, C own client on httpx, D own client on urllib) | 2026-10-21 | requests is the maintained industry default, and our own client gives full control of retries, pacing and log redaction. |
+| D10 | Token storage | A. Windows Credential Manager through keyring (refresh token under service FairShuffle; access token in memory only) | 2026-10-21 | The standard way Windows apps keep secrets; matches Rule 2 with the least custom security code. |
 | D11 | Tray UI shape | pending (Phase 3) | | |
 | D12 | Shuffle strategy | pending (Phase 4) | | |
 | D13 | Backup and undo | pending (Phase 4) | | |
@@ -228,6 +228,8 @@ Why it matters: the Spotify API changed a lot in 2026 and may change again.
 | C. Library for sign-in only, own client for playlist calls | Balance | Two styles in one codebase | Medium |
 
 Recommendation: B, because we only need a handful of endpoints and it is the stronger networking and resume story. (For Tauri, B is effectively required.)
+
+Asked on 2026-10-20 with the HTTP library folded in, since ROADMAP section 2 puts it inside D9. Checked on PyPI that day: spotipy 2.26.0 (March 2026, its default token cache is a plain file), requests 2.34.2 (May 2026), httpx 0.28.1 (no stable release since December 2024). Options asked: A. spotipy, B. own client on requests, C. own client on httpx, D. own client on the standard library's urllib. Derek chose B.
 
 ### D10: Token storage (Phase 2)
 
