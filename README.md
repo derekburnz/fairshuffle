@@ -20,6 +20,8 @@ Early development. Milestone M1 (v0.1.0) built the app's frame:
 
 Milestone M2 (v0.2.0) adds signing in to Spotify from the tray menu, which shows "Signed in as" with your Spotify name. You register your own Spotify app first ([setup guide](docs/spotify-setup.md)); after that, Sign in opens your browser once and FairShuffle stays signed in across restarts until you pick Sign out or the six-month sign-in runs out.
 
+Milestone M3 (v0.3.0) adds the playlist picker. Left-click the tray icon, or pick **Shuffle a playlist…** in its menu, and a small window lists every playlist you own or collaborate on, with item counts, a search box and Refresh ([screenshot](docs/screenshots/picker-window.png)). Playlists you only follow are left out, because Spotify only lets their owner and collaborators reorder them.
+
 The shuffle itself arrives in M4. The [roadmap](docs/planning/ROADMAP.md) lists every milestone and issue.
 
 ## How it will work
