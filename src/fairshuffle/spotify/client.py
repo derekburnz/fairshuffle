@@ -47,6 +47,7 @@ from fairshuffle.spotify.ratelimit import (
 API_BASE = "https://api.spotify.com/v1"
 _READS = frozenset({"GET", "HEAD"})
 _REASON = re.compile(r"[A-Z_]{1,40}")  # Spotify's reason codes, such as QUOTA_EXCEEDED
+_ENCODED_STEP = re.compile(r"%(2e|2f|5c)", re.IGNORECASE)
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +210,10 @@ def _check_path(path: str) -> None:
         raise ValueError("The path must start with a single /, as in /me.")
     if any(ord(char) < 32 or ord(char) == 127 for char in path):
         raise ValueError("The path has control characters in it.")
-    if ".." in path.partition("?")[0].split("/"):
+    route = path.partition("?")[0]
+    if _ENCODED_STEP.search(route):  # %2e, %2f or %5c would decode to a step up or a new segment
+        raise ValueError("The path has an encoded dot or slash in it.")
+    if ".." in route.split("/"):
         raise ValueError("The path can't step up with '..'.")
 
 
