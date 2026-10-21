@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from fairshuffle import __version__, app
 from fairshuffle.storage.logging_setup import HOME_MASK
 from fairshuffle.ui.account import AccountController
+from fairshuffle.ui.playlists import PlaylistController
 from fairshuffle.ui.tray import TrayIcon
 
 
@@ -26,9 +27,11 @@ def read_log() -> str:
 
 
 def tray_that_quits_once_running(
-    quit_app: Callable[[], None], account: AccountController | None = None
+    quit_app: Callable[[], None],
+    account: AccountController | None = None,
+    playlists: PlaylistController | None = None,
 ) -> TrayIcon:
-    tray = TrayIcon(quit_app=quit_app, account=account)
+    tray = TrayIcon(quit_app=quit_app, account=account, playlists=playlists)
     # Picks Quit from the menu as soon as the event loop is running.
     QTimer.singleShot(0, tray.quit_action.trigger)
     return tray
@@ -52,12 +55,16 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     created: list[TrayIcon] = []
 
     accounts: list[AccountController | None] = []
+    lists: list[PlaylistController | None] = []
 
     def record_tray(
-        quit_app: Callable[[], None], account: AccountController | None = None
+        quit_app: Callable[[], None],
+        account: AccountController | None = None,
+        playlists: PlaylistController | None = None,
     ) -> TrayIcon:
         accounts.append(account)
-        created.append(tray_that_quits_once_running(quit_app, account))
+        lists.append(playlists)
+        created.append(tray_that_quits_once_running(quit_app, account, playlists))
         return created[-1]
 
     monkeypatch.setattr(app, "TrayIcon", record_tray)
@@ -66,6 +73,7 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     assert len(created) == 1
     assert not created[0].isVisible()
     assert isinstance(accounts[0], AccountController)  # the menu has the account items
+    assert isinstance(lists[0], PlaylistController)  # and the playlist picker
 
 
 def test_run_explains_and_exits_with_code_one_without_a_notification_area(
@@ -103,9 +111,7 @@ def test_a_later_launch_makes_the_running_copy_point_at_its_icon(
     monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: True))
     titles: list[str] = []
 
-    def tray_that_records_messages(
-        quit_app: Callable[[], None], account: AccountController | None = None
-    ) -> TrayIcon:
+    def tray_that_records_messages(quit_app: Callable[[], None], **_: object) -> TrayIcon:
         tray = TrayIcon(quit_app=quit_app)  # no account: its notices would race this one
 
         def record_then_quit(title: str, *_: object) -> None:

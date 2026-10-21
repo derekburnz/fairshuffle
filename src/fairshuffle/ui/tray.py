@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
 from fairshuffle.ui.about import build_about_box
 from fairshuffle.ui.account import AccountController, AccountState, AccountStatus
+from fairshuffle.ui.picker import PlaylistPicker
+from fairshuffle.ui.playlists import PlaylistController
 
 TOOLTIP = "FairShuffle"
 
@@ -63,21 +65,25 @@ def placeholder_icon() -> QIcon:
 class TrayIcon(QSystemTrayIcon):
     """The icon in the hidden icons flyout behind the ^ arrow on the Windows 11 taskbar.
 
-    Right-click opens the menu. A left-click opens it too, and so does Enter when the icon has
-    keyboard focus (Win+B moves the focus to the notification area). Inside the menu the arrow
-    keys move and the underlined letters pick an item.
+    Right-click opens the menu. A left-click opens the playlist picker while signed in (D11) and
+    the menu otherwise, and Enter does the same when the icon has keyboard focus (Win+B moves the
+    focus to the notification area). Inside the menu the arrow keys move and the underlined
+    letters pick an item.
     """
 
     def __init__(
         self,
         quit_app: Callable[[], None],
         account: AccountController | None = None,
+        playlists: PlaylistController | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(placeholder_icon(), parent)
         self._quit_app = quit_app
         self._account = account
+        self._playlists = playlists
         self._about_box: QMessageBox | None = None
+        self._picker: PlaylistPicker | None = None
         self.setToolTip(TOOLTIP)
 
         # A QSystemTrayIcon is not a widget, so the menu has no Qt parent. This attribute keeps
@@ -87,10 +93,17 @@ class TrayIcon(QSystemTrayIcon):
         self.status_action.setEnabled(False)  # a label, not something to click
         self.account_action = QAction(self.menu)
         self.account_action.triggered.connect(self._on_account_action)
+        # The ellipsis is the Windows sign that the item opens a window rather than acting.
+        self.picker_action = QAction("Shuffle a &playlist\u2026", self.menu)
+        self.picker_action.triggered.connect(self.show_picker)
+        self.picker_action.setVisible(False)
         if account is not None:
             self.menu.addAction(self.status_action)
             self.menu.addAction(self.account_action)
             self.menu.addSeparator()
+            if playlists is not None:
+                self.menu.addAction(self.picker_action)
+                self.menu.addSeparator()
             account.status_changed.connect(self.show_account_status)
             self.show_account_status(account.status)
         self.about_action = QAction("&About FairShuffle", self.menu)
@@ -119,8 +132,25 @@ class TrayIcon(QSystemTrayIcon):
         self._about_box.finished.connect(self._forget_about_box)
         self._about_box.open()
 
+    @property
+    def picker(self) -> PlaylistPicker | None:
+        """The playlist picker once it has been opened, otherwise None."""
+        return self._picker
+
+    def show_picker(self) -> None:
+        """Open the playlist picker, or bring it forward if it is open already."""
+        if self._account is None or self._playlists is None:  # pragma: no cover  # no such item
+            return
+        if self._picker is None:
+            self._picker = PlaylistPicker(self._account, self._playlists)
+        self._picker.open()
+
     def show_account_status(self, status: AccountStatus) -> None:
         """Bring the account lines of the menu up to date, and pass on any message once."""
+        signed_in = status.state is AccountState.SIGNED_IN
+        self.picker_action.setVisible(signed_in and self._playlists is not None)
+        if not signed_in and self._picker is not None:
+            self._picker.hide()
         line = _STATUS_LINES[status.state]
         if status.state is AccountState.SIGNED_IN and status.name:
             line = f"Signed in as {status.name}"
@@ -166,5 +196,8 @@ class TrayIcon(QSystemTrayIcon):
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         # Right-click (Context) already shows the menu through setContextMenu.
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            if self.picker_action.isVisible():
+                self.show_picker()
+                return
             icon_area = self.geometry()
             self.menu.popup(icon_area.center() if icon_area.isValid() else QCursor.pos())

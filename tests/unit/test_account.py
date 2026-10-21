@@ -13,7 +13,7 @@ import responses
 from pytestqt.qtbot import QtBot
 
 from fairshuffle.auth.loopback import CallbackTimeout, ListenerCancelled
-from fairshuffle.auth.oauth import SpotifyAuth, Tokens
+from fairshuffle.auth.oauth import SignInRequired, SpotifyAuth, Tokens
 from fairshuffle.config import ConfigError, SpotifySettings, load_settings
 from fairshuffle.ui import account as account_module
 from fairshuffle.ui.account import (
@@ -306,6 +306,33 @@ def test_sign_out_removes_the_saved_sign_in(
         AccountState.SIGNED_OUT, message="Signed out of Spotify."
     )
     assert account.client is None
+
+
+def test_sign_out_ends_the_old_sign_in_before_deleting_it(
+    spotify: responses.RequestsMock, seen: list[AccountStatus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A playlist load still running on a worker holds the old client. Ending it first means
+    # that load can't refresh and save a token after the delete, signing the account back in.
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.sign_in()
+    old = account.client
+    assert old is not None
+    ended_at_delete: list[bool] = []
+    real_delete = account_module.delete_refresh_token
+
+    def delete() -> None:
+        with pytest.raises(SignInRequired):
+            old.get("/me")
+        ended_at_delete.append(True)
+        real_delete()
+
+    monkeypatch.setattr(account_module, "delete_refresh_token", delete)
+
+    account.sign_out()
+
+    assert ended_at_delete == [True]
+    assert stored() is None
 
 
 def test_a_sign_out_that_cant_reach_credential_manager_says_so(
