@@ -12,13 +12,13 @@ Spotify's shuffle is not a plain random shuffle, and people with large playlists
 
 ## Status
 
-Early development. Milestone M1 (v0.1.0) builds the app's frame:
+Early development. Milestone M1 (v0.1.0) built the app's frame:
 
 - An icon in the notification area (the hidden icons flyout behind `^` on the taskbar) with About and Quit.
 - One copy runs per Windows user. Launching it again points you at the icon that is already there.
 - Rotating log files in `%LOCALAPPDATA%\FairShuffle\logs`, with tokens, sign-in codes, known secret values and your home folder path masked before a line is written.
 
-Milestone M2 (v0.2.0, in progress) adds signing in to Spotify from the tray menu. You register your own Spotify app first ([setup guide](docs/spotify-setup.md)); after that, Sign in opens your browser once and FairShuffle stays signed in across restarts until you pick Sign out or the six-month sign-in runs out.
+Milestone M2 (v0.2.0) adds signing in to Spotify from the tray menu, which shows "Signed in as" with your Spotify name. You register your own Spotify app first ([setup guide](docs/spotify-setup.md)); after that, Sign in opens your browser once and FairShuffle stays signed in across restarts until you pick Sign out or the six-month sign-in runs out.
 
 The shuffle itself arrives in M4. The [roadmap](docs/planning/ROADMAP.md) lists every milestone and issue.
 

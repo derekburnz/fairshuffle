@@ -7,7 +7,7 @@
 
 [project]
 name = "fairshuffle"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Windows tray app that gives a Spotify playlist a true Fisher-Yates shuffle."
 readme = "README.md"
 license = "MIT"
