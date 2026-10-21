@@ -7,6 +7,10 @@ Keyboard: the search box has focus when the window opens; typing filters the lis
 into the list, the arrow keys move between playlists and Esc hides the window. Every row tells a
 screen reader its name and item count, and a name too long for the row ends in an ellipsis with
 the full name in a tooltip.
+
+When there is nothing to list, the list's space says why instead: no playlists you can edit yet,
+a load that failed, or a search with no match. A list of hundreds or thousands of playlists
+fills in one go, and while a search narrows it the line underneath says how many it shows.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QPushButton,
+    QStackedWidget,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
@@ -42,6 +47,13 @@ ROW_HEIGHT = 40
 UNTITLED = "Untitled playlist"
 SHUFFLE_LATER = "Shuffling arrives in FairShuffle 0.4."
 SIGNED_OUT = "Sign in to Spotify from the tray menu to see your playlists."
+EMPTY = (
+    "No playlists to shuffle yet. FairShuffle can only reorder playlists you own or collaborate "
+    "on. Make one in Spotify, or join one as a collaborator, then press Refresh."
+)
+LOAD_FAILED = "Couldn't load your playlists. Press Refresh to try again."
+KEPT_LIST = "The list shown is from before."
+MAX_QUERY_SHOWN = 40  # a longer search is cut in the "no match" line so it still wraps
 
 COUNT_ROLE = Qt.ItemDataRole.UserRole + 1  # the "148 items" text shown on the right of a row
 ID_ROLE = Qt.ItemDataRole.UserRole + 2  # the playlist's Spotify ID
@@ -54,10 +66,20 @@ def count_text(count: int | None) -> str:
     return f"{count:,} item" + ("" if count == 1 else "s")
 
 
-def list_summary(count: int) -> str:
+def list_summary(count: int, matching: int | None = None) -> str:
+    """ "1,204 playlists you can edit", or "Showing 12 of 1,204 playlists" while searching."""
+    if matching is not None:
+        return f"Showing {matching:,} of {count:,} playlist" + ("" if count == 1 else "s")
     if count == 1:
         return "1 playlist you can edit"
     return f"{count:,} playlists you can edit"
+
+
+def no_match(query: str) -> str:
+    query = query.strip()
+    if len(query) > MAX_QUERY_SHOWN:
+        query = query[: MAX_QUERY_SHOWN - 1].rstrip() + "…"
+    return f"No playlists match \u201c{query}\u201d."
 
 
 class PlaylistRowDelegate(QStyledItemDelegate):
@@ -137,6 +159,7 @@ class PlaylistPicker(QWidget):
         self.filtered.setSourceModel(self.model)
         self.filtered.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.search.textChanged.connect(self.filtered.setFilterFixedString)
+        self.search.textChanged.connect(lambda _text: self.show_playlists(playlists.status))
 
         self.list = QListView()
         self.list.setModel(self.filtered)
@@ -146,6 +169,16 @@ class PlaylistPicker(QWidget):
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setAccessibleName("Playlists you can edit")
+
+        # Shown in the list's place when there is nothing to list, saying why.
+        self.placeholder = QLabel()
+        self.placeholder.setTextFormat(Qt.TextFormat.PlainText)
+        self.placeholder.setWordWrap(True)
+        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder.setContentsMargins(16, 16, 16, 16)
+        self.body = QStackedWidget()
+        self.body.addWidget(self.list)
+        self.body.addWidget(self.placeholder)
 
         self.status_label = QLabel()
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -167,7 +200,7 @@ class PlaylistPicker(QWidget):
         layout.addWidget(self.account_label)
         layout.addWidget(self.heading)
         layout.addWidget(self.search)
-        layout.addWidget(self.list, stretch=1)
+        layout.addWidget(self.body, stretch=1)
         layout.addWidget(self.status_label)
         layout.addLayout(buttons)
 
@@ -197,18 +230,39 @@ class PlaylistPicker(QWidget):
         if status.playlists != self._shown_playlists:
             self._fill(status.playlists)
         self.refresh_button.setEnabled(status.state is not PlaylistsState.LOADING)
+        total = len(status.playlists)
+        matching = self.filtered.rowCount() if self.search.text() else None
         if status.state is PlaylistsState.LOADING:
             self.status_label.setText("Loading your playlists…")
         elif status.state is PlaylistsState.FAILED:
-            self.status_label.setText(status.message or "Couldn't load your playlists.")
+            message = status.message or "Couldn't load your playlists."
+            self.status_label.setText(f"{message} {KEPT_LIST}" if total else message)
         elif status.state is PlaylistsState.READY:
-            self.status_label.setText(list_summary(len(status.playlists)))
+            self.status_label.setText(list_summary(total, matching) if total else "")
         else:
             self.status_label.setText(SIGNED_OUT)
+        self._show_placeholder(self._placeholder_text(status, total, matching))
+
+    def _placeholder_text(self, status: PlaylistsStatus, total: int, matching: int | None) -> str:
+        """Why the list is empty, or "" when it has rows (or is still loading its first rows)."""
+        if total and matching == 0:
+            return no_match(self.search.text())
+        if total:
+            return ""
+        if status.state is PlaylistsState.FAILED:
+            return LOAD_FAILED
+        if status.state is PlaylistsState.READY:
+            return EMPTY
+        return ""
+
+    def _show_placeholder(self, text: str) -> None:
+        self.placeholder.setText(text)
+        self.body.setCurrentWidget(self.placeholder if text else self.list)
 
     def _fill(self, playlists: tuple[Playlist, ...]) -> None:
         selected = self.selected_playlist_id()
         self.model.clear()
+        rows: list[QStandardItem] = []
         for playlist in playlists:
             name = playlist.name or UNTITLED
             count = count_text(playlist.item_count)
@@ -220,7 +274,9 @@ class PlaylistPicker(QWidget):
             tooltip = f"{name}\n{count}" if count else name
             row.setToolTip(Qt.convertFromPlainText(tooltip, Qt.WhiteSpaceMode.WhiteSpaceNormal))
             row.setData(f"{name}, {count}" if count else name, Qt.ItemDataRole.AccessibleTextRole)
-            self.model.appendRow(row)
+            rows.append(row)
+        if rows:
+            self.model.invisibleRootItem().appendRows(rows)  # one update for thousands of rows
         self._shown_playlists = playlists
         self._select(selected)
 
