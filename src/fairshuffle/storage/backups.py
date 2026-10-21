@@ -32,7 +32,10 @@ from fairshuffle.storage.paths import backup_dir
 
 FORMAT = 1
 KEEP_PER_PLAYLIST = 10
+MAX_FILE_BYTES = 50_000_000  # far above the largest playlist (10,000 items of 1,000 characters)
+MAX_URI_LENGTH = 1_000  # as spotify/playlists.py: local file URIs can be long
 _ID = re.compile(r"[0-9A-Za-z]{1,64}")  # a Spotify ID never holds a path separator or a dot
+_SNAPSHOT = re.compile(r"[\x21-\x7e]{1,256}")  # as spotify/playlists.py
 _STAMP = "%Y%m%dT%H%M%S%fZ"
 
 log = logging.getLogger(__name__)
@@ -66,6 +69,7 @@ def save(playlist_id: str, snapshot_id: str, items: Sequence[PlaylistItem]) -> B
         folder.mkdir(parents=True, exist_ok=True)
         _write_atomically(path, json.dumps(_to_json(backup), ensure_ascii=False))
         if load(path) != backup:
+            path.unlink(missing_ok=True)  # never leave a wrong copy for Undo to find
             raise BackupError("The backup didn't read back the same.")
     except OSError:
         # The OS message can quote the path, which holds the Windows user name: log the type only.
@@ -89,6 +93,8 @@ def newest(playlist_id: str) -> Backup | None:
 
 def load(path: Path) -> Backup:
     try:
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise ValueError("too big")
         data: Any = json.loads(path.read_text(encoding="utf-8"))
         return _from_json(data)
     except OSError, ValueError, KeyError, TypeError:
@@ -138,8 +144,9 @@ def _write_atomically(path: Path, text: str) -> None:
     """Write to a temp file in the same folder, then swap it in, so a crash never leaves half a
     backup under the real name."""
     handle, temp_name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
+    os.close(handle)  # reopened by name below, so the handle can't leak if opening fails
     try:
-        with os.fdopen(handle, "w", encoding="utf-8") as file:
+        with open(temp_name, "w", encoding="utf-8") as file:
             file.write(text)
             file.flush()
             os.fsync(file.fileno())
@@ -172,7 +179,9 @@ def _from_json(data: Any) -> Backup:
     playlist_id, snapshot_id = data["playlist_id"], data["snapshot_id"]
     if not isinstance(playlist_id, str) or not _ID.fullmatch(playlist_id):
         raise ValueError("bad playlist ID")
-    if not isinstance(snapshot_id, str) or not isinstance(data["items"], list):
+    if not isinstance(snapshot_id, str) or not _SNAPSHOT.fullmatch(snapshot_id):
+        raise ValueError("bad snapshot_id")
+    if not isinstance(data["items"], list):
         raise ValueError("bad backup")
     saved_at = datetime.fromisoformat(data["saved_at"])
     items = tuple(_item(position, entry) for position, entry in enumerate(data["items"]))
@@ -181,8 +190,17 @@ def _from_json(data: Any) -> Backup:
 
 def _item(position: int, entry: Any) -> PlaylistItem:
     uri, kind, is_local = entry["uri"], entry["kind"], entry["is_local"]
-    if not (uri is None or (isinstance(uri, str) and uri.startswith("spotify:"))):
+    if not (uri is None or _is_spotify_uri(uri)):
         raise ValueError("bad uri")
     if kind not in ("track", "episode", None) or not isinstance(is_local, bool):
         raise ValueError("bad item")
     return PlaylistItem(position=position, uri=uri, kind=kind, is_local=is_local)
+
+
+def _is_spotify_uri(uri: Any) -> bool:
+    return (
+        isinstance(uri, str)
+        and uri.startswith("spotify:")
+        and len(uri) <= MAX_URI_LENGTH
+        and uri.isprintable()
+    )

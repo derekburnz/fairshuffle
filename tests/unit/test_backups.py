@@ -105,6 +105,8 @@ def test_a_damaged_newest_file_falls_back_to_the_one_before() -> None:
         lambda d: d["items"][0].update(kind="album"),
         lambda d: d["items"][0].update(is_local="no"),
         lambda d: d["items"][0].pop("uri"),
+        lambda d: d.update(snapshot_id="fake snapshot\n"),
+        lambda d: d["items"][0].update(uri="spotify:" + "x" * 1_000),
     ],
     ids=[
         "format",
@@ -116,6 +118,8 @@ def test_a_damaged_newest_file_falls_back_to_the_one_before() -> None:
         "kind",
         "is_local",
         "missing_uri",
+        "snapshot_chars",
+        "uri_length",
     ],
 )
 def test_a_tampered_file_is_refused(change: Callable[[dict[str, Any]], object]) -> None:
@@ -165,6 +169,27 @@ def test_a_backup_that_reads_back_wrong_is_refused(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(BackupError, match="read back"):
         backups.save("fakelist", "fake-snapshot-1", mixed())
+
+
+def test_a_wrong_read_back_leaves_no_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_load = backups.load
+
+    def emptied(path: Path) -> Backup:
+        loaded = real_load(path)
+        return Backup(loaded.playlist_id, loaded.snapshot_id, loaded.saved_at, ())
+
+    monkeypatch.setattr(backups, "load", emptied)
+
+    with pytest.raises(BackupError):
+        backups.save("fakelist", "fake-snapshot-1", mixed())
+    assert list(paths.backup_dir().iterdir()) == []
+
+
+def test_a_huge_file_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    backups.save("fakelist", "fake-snapshot-1", mixed())
+    monkeypatch.setattr(backups, "MAX_FILE_BYTES", 10)
+
+    assert backups.newest("fakelist") is None
 
 
 def test_a_failed_temp_write_leaves_nothing_behind(monkeypatch: pytest.MonkeyPatch) -> None:
