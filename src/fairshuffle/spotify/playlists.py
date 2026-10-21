@@ -55,8 +55,9 @@ def read_playlist_items(client: SpotifyClient, playlist_id: str) -> list[Playlis
     items by position: an item FairShuffle can't read still takes up its place.
 
     The items call carries no snapshot_id, so if the playlist changes between pages the positions
-    can drift. The shuffle (M4) must compare the playlist's snapshot_id before and after reading,
-    and send that snapshot_id with each reorder so Spotify refuses a stale one.
+    can drift. The shuffle (M4) must compare the playlist's snapshot_id from GET /playlists/{id}
+    before and after reading (P4-06). The docs don't say Spotify refuses a reorder sent with a
+    stale snapshot_id, so M4 must not rely on that without checking (Rule 4).
     """
     if not _ID.fullmatch(playlist_id):
         raise ValueError("That isn't a Spotify playlist ID.")
