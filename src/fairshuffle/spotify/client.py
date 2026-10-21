@@ -14,7 +14,8 @@ Every call goes through SpotifyAuth (auth/oauth.py), which adds the access token
 - maps the rest: 403 to NotOwner for playlists and AccessDenied elsewhere, 400 and 404 to
   RequestRejected.
 
-Log lines name the method and path, never the query string or a body.
+Log lines name the method and path with {id} in place of any ID, never the query string or a
+body.
 """
 
 from __future__ import annotations
@@ -48,6 +49,11 @@ API_BASE = "https://api.spotify.com/v1"
 _READS = frozenset({"GET", "HEAD"})
 _REASON = re.compile(r"[A-Z_]{1,40}")  # Spotify's reason codes, such as QUOTA_EXCEEDED
 _ENCODED_STEP = re.compile(r"%(2e|2f|5c)", re.IGNORECASE)
+# A segment after one of these names an ID, which is the user's own data (a user ID can be the
+# account name), so log lines show {id} in its place.
+_ID_SEGMENT = re.compile(
+    r"/(albums|artists|audiobooks|chapters|episodes|playlists|shows|tracks|users)/[^/]+"
+)
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +85,12 @@ class SpotifyClient:
         return self.request("GET", path, params=params)
 
     def get_url(self, url: str) -> dict[str, Any]:
-        """GET a full URL Spotify gave us, such as a page's "next" link."""
+        """GET a full URL Spotify gave us.
+
+        Not for paging: a "next" link can name a path FairShuffle didn't choose (it has pointed
+        at /users/{user id}/...), which would then show in the log. Page by offset on a fixed
+        path instead, as spotify/playlists.py does.
+        """
         if not url.startswith(API_BASE + "/"):
             raise ValueError("Only Spotify Web API links can be followed.")
         return self.request("GET", url[len(API_BASE) :])
@@ -102,7 +113,7 @@ class SpotifyClient:
         _check_path(path)
         method = method.upper()
         is_read = method in _READS
-        what = f"{method} {path.partition('?')[0]}"  # a next link's query stays out of the logs
+        what = f"{method} {_log_route(path)}"
         for attempt in range(self._policy.max_attempts):
             last = attempt == self._policy.max_attempts - 1
             response = self._send(method, path, params, body, what, is_read, last)
@@ -204,6 +215,11 @@ class SpotifyClient:
         return data
 
 
+def _log_route(path: str) -> str:
+    """The path as log lines show it: no query string, and {id} in place of each ID."""
+    return _ID_SEGMENT.sub(r"/\1/{id}", path.partition("?")[0])
+
+
 def _check_path(path: str) -> None:
     """Refuse a path that could leave /v1, forge a log line or name another host."""
     if not path.startswith("/") or path.startswith("//"):
@@ -211,8 +227,8 @@ def _check_path(path: str) -> None:
     if any(ord(char) < 32 or ord(char) == 127 for char in path):
         raise ValueError("The path has control characters in it.")
     route = path.partition("?")[0]
-    if _ENCODED_STEP.search(route):  # %2e, %2f or %5c would decode to a step up or a new segment
-        raise ValueError("The path has an encoded dot or slash in it.")
+    if "\\" in route or _ENCODED_STEP.search(route):  # a step up or a new segment once decoded
+        raise ValueError("The path has a backslash or an encoded dot or slash in it.")
     if ".." in route.split("/"):
         raise ValueError("The path can't step up with '..'.")
 
