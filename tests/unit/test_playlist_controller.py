@@ -253,6 +253,15 @@ def test_load_if_needed_skips_a_loaded_or_loading_list(
     assert len(jobs.jobs) == 1
 
 
+def test_a_load_result_keeps_names_and_the_user_id_out_of_repr() -> None:
+    from fairshuffle.ui.playlists import _Loaded
+
+    loaded = _Loaded("fakeuser", (playlist(1, name="Secret Crush Songs"),))
+
+    assert "fakeuser" not in repr(loaded)
+    assert "Secret Crush" not in repr(loaded)
+
+
 def test_names_never_show_in_the_status_repr() -> None:
     status = PlaylistsStatus(PlaylistsState.READY, (playlist(1, name="Secret Crush Songs"),))
 

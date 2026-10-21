@@ -17,9 +17,8 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     QSize,
     QSortFilterProxyModel,
-    Qt,
 )
-from PySide6.QtGui import QFont, QKeyEvent, QPainter, QStandardItem, QStandardItemModel
+from PySide6.QtGui import QFont, QKeyEvent, QPainter, QStandardItem, QStandardItemModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -118,7 +117,9 @@ class PlaylistPicker(QWidget):
         self.resize(WINDOW_SIZE)
         self.setMinimumSize(320, 360)
 
+        # Labels would show text that looks like HTML as HTML; these only ever show plain text.
         self.account_label = QLabel()
+        self.account_label.setTextFormat(Qt.TextFormat.PlainText)
         self.heading = QLabel("Pick a playlist to shuffle")
         heading_font = QFont(self.heading.font())
         heading_font.setPointSizeF(heading_font.pointSizeF() * 1.5)
@@ -147,6 +148,7 @@ class PlaylistPicker(QWidget):
         self.list.setAccessibleName("Playlists you can edit")
 
         self.status_label = QLabel()
+        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         self.status_label.setWordWrap(True)
 
         self.refresh_button = QPushButton("&Refresh")
@@ -213,7 +215,10 @@ class PlaylistPicker(QWidget):
             row = QStandardItem(name)
             row.setData(count, COUNT_ROLE)
             row.setData(playlist.id, ID_ROLE)
-            row.setToolTip(f"{name}\n{count}" if count else name)
+            # Qt shows a tooltip that looks like HTML as HTML, and a collaborator can name a
+            # playlist "<img src=...>", so the tooltip is always our own HTML with the name escaped.
+            tooltip = f"{name}\n{count}" if count else name
+            row.setToolTip(Qt.convertFromPlainText(tooltip, Qt.WhiteSpaceMode.WhiteSpaceNormal))
             row.setData(f"{name}, {count}" if count else name, Qt.ItemDataRole.AccessibleTextRole)
             self.model.appendRow(row)
         self._shown_playlists = playlists

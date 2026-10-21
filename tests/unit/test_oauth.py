@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import threading
 from collections.abc import Callable, Iterator
 from urllib.parse import parse_qs, urlsplit
 
@@ -632,3 +633,54 @@ def test_once_the_sign_in_has_ended_nobody_asks_spotify_again(
         auth.refresh()  # another worker thread that was waiting on the lock
 
     assert len(spotify.calls) == 1
+
+
+# Ending a sign-in here (sign-out)
+
+
+def test_an_ended_sign_in_never_refreshes_saves_or_sends(
+    spotify: responses.RequestsMock, auth: SpotifyAuth, clock: FakeClock
+) -> None:
+    auth.end()
+    clock.now += 7200  # the access token has run out
+
+    with pytest.raises(SignInRequired):
+        auth.access_token()
+    with pytest.raises(SignInRequired):
+        auth.request("GET", API_URL)
+    assert len(spotify.calls) == 0  # neither the token endpoint nor the API was called
+    assert stored() is None
+
+
+def test_ending_waits_for_a_refresh_already_under_way(
+    spotify: responses.RequestsMock, auth: SpotifyAuth, clock: FakeClock
+) -> None:
+    # A playlist load on a worker is refreshing when the user signs out. Its save must land
+    # before the sign-out deletes the saved token, never after it.
+    events: list[str] = []
+    refreshing = threading.Event()
+    release = threading.Event()
+
+    def slow_refresh(*_: object) -> Tokens:
+        refreshing.set()
+        release.wait(5)
+        events.append("refresh saved")
+        return Tokens(FAKE_ACCESS_2, "fake-refresh-token-rotated", 3600, frozenset())
+
+    spotify.get(API_URL, json={})
+    clock.now += 7200
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(oauth, "refresh_tokens", slow_refresh)
+        worker = threading.Thread(target=lambda: auth.request("GET", API_URL))
+        worker.start()
+        assert refreshing.wait(5)
+        ender = threading.Thread(target=lambda: (auth.end(), events.append("ended")))
+        ender.start()
+        ender.join(0.2)
+        assert ender.is_alive()  # end() waits while the refresh holds the lock
+        release.set()
+        worker.join(5)
+        ender.join(5)
+
+    assert events == ["refresh saved", "ended"]
+    assert stored() == "fake-refresh-token-rotated"  # saved before end() returned

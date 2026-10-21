@@ -281,6 +281,18 @@ class SpotifyAuth:
         with self._lock:
             self._refresh()
 
+    def end(self) -> None:
+        """End this sign-in here, for example at sign-out: no thread refreshes it, saves a new
+        refresh token for it or sends another call with it.
+
+        Returns once a refresh already under way has finished, so that refresh's save always
+        lands before the caller deletes the saved token, never after. It may wait on the network
+        for that, so call it from a worker thread.
+        """
+        self._signed_out = True  # seen at once by a thread about to refresh or send
+        with self._lock:  # waits for a refresh in flight
+            pass
+
     def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         """Send one API call with the access token. On a 401, refresh once and send it again.
 
@@ -288,6 +300,8 @@ class SpotifyAuth:
         somewhere unexpected, say) can't send it to another host or over plain http.
         """
         _check_api_url(url)
+        if self._signed_out:
+            raise SignInRequired("Spotify needs you to sign in again.")
         if kwargs.get("verify", True) is not True:
             raise ValueError("API calls always check Spotify's certificate.")
         sent_with = self.access_token()

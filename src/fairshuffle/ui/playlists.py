@@ -51,8 +51,9 @@ class PlaylistsStatus:
 
 @dataclass(frozen=True, slots=True)
 class _Loaded:
-    owner_id: str | None = None
-    playlists: tuple[Playlist, ...] = ()
+    # The user ID and the playlist names are the user's own data, so neither shows in repr.
+    owner_id: str | None = field(default=None, repr=False)
+    playlists: tuple[Playlist, ...] = field(default=(), repr=False)
     message: str | None = None
 
 

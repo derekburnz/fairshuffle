@@ -129,7 +129,7 @@ def test_the_list_shows_names_counts_and_a_summary(
     assert shown_names(picker) == ["Morning Run", UNTITLED]
     first = picker.list.model().index(0, 0)
     assert first.data(COUNT_ROLE) == "64 items"
-    assert first.data(Qt.ItemDataRole.ToolTipRole) == "Morning Run\n64 items"
+    assert first.data(Qt.ItemDataRole.ToolTipRole) == "<p>Morning Run<br>\n64 items</p>"  # our HTML
     assert first.data(Qt.ItemDataRole.AccessibleTextRole) == "Morning Run, 64 items"
     second = picker.list.model().index(1, 0)
     assert second.data(Qt.ItemDataRole.AccessibleTextRole) == UNTITLED
@@ -147,6 +147,33 @@ def test_names_are_shown_as_text_not_markup(
     load(jobs, monkeypatch, lists, [playlist(1, "<b>Bold & Co</b>")])
 
     assert shown_names(picker) == ["<b>Bold & Co</b>"]
+
+
+@pytest.mark.parametrize(
+    "name", ["<b>Bold</b>", '<img src="file:///C:/x.png">', '<a href="https://example.com">x</a>']
+)
+def test_a_name_that_looks_like_html_is_escaped_in_the_tooltip(
+    picker: PlaylistPicker,
+    jobs: HeldJobs,
+    lists: PlaylistController,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    # A collaborative playlist can be named by someone else, and Qt shows HTML-like tooltips
+    # as HTML.
+    load(jobs, monkeypatch, lists, [playlist(1, name)])
+
+    tooltip = picker.list.model().index(0, 0).data(Qt.ItemDataRole.ToolTipRole)
+    assert "&lt;" in tooltip
+    assert "<b>" not in tooltip and "<img" not in tooltip and "<a " not in tooltip
+
+
+def test_the_labels_never_read_text_as_html(picker: PlaylistPicker, account: FakeAccount) -> None:
+    account.sign_in(name="<b>Fake</b>")
+
+    assert picker.account_label.textFormat() is Qt.TextFormat.PlainText
+    assert picker.status_label.textFormat() is Qt.TextFormat.PlainText
+    assert picker.account_label.text() == "Signed in as <b>Fake</b>"
 
 
 def test_search_filters_without_caring_about_case(
@@ -339,7 +366,7 @@ def test_a_long_name_is_drawn_cut_with_an_ellipsis(
     name, count = drawn
     assert name.endswith("…") and len(name) < len(long_name)
     assert count == "73 items"
-    assert index.data(Qt.ItemDataRole.ToolTipRole).startswith(long_name)
+    assert index.data(Qt.ItemDataRole.ToolTipRole).startswith("<p>" + long_name)
 
 
 def test_a_selected_row_is_drawn_without_a_widget_too(
