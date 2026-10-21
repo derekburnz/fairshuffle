@@ -272,6 +272,8 @@ class SpotifyAuth:
     def access_token(self) -> str:
         """A current access token, refreshed first if it has run out or is about to."""
         with self._lock:
+            if self._signed_out:  # checked again here, for a call that started before end()
+                raise SignInRequired("Spotify needs you to sign in again.")
             if self._clock() >= self._expires_at:
                 self._refresh()
             return self._tokens.access_token
@@ -287,7 +289,8 @@ class SpotifyAuth:
 
         Returns once a refresh already under way has finished, so that refresh's save always
         lands before the caller deletes the saved token, never after. It may wait on the network
-        for that, so call it from a worker thread.
+        for that, so call it from a worker thread. A call already on the wire when end() runs
+        still finishes; it can only read, never bring the sign-in back.
         """
         self._signed_out = True  # seen at once by a thread about to refresh or send
         with self._lock:  # waits for a refresh in flight

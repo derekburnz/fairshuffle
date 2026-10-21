@@ -652,6 +652,14 @@ def test_an_ended_sign_in_never_refreshes_saves_or_sends(
     assert stored() is None
 
 
+def test_an_ended_sign_in_hands_out_no_token_even_before_it_runs_out(auth: SpotifyAuth) -> None:
+    auth.access_token()  # still current
+    auth.end()
+
+    with pytest.raises(SignInRequired):
+        auth.access_token()
+
+
 def test_ending_waits_for_a_refresh_already_under_way(
     spotify: responses.RequestsMock, auth: SpotifyAuth, clock: FakeClock
 ) -> None:
