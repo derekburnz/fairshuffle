@@ -462,6 +462,7 @@ def test_logs_name_the_path_but_never_the_query_or_body(
         ("/playlists/abc123/items", "/playlists/{id}/items"),
         ("/users/fake-account-name/playlists", "/users/{id}/playlists"),
         ("/tracks/abc?market=XX", "/tracks/{id}"),
+        ("/Playlists/ABC/items", "/Playlists/{id}/items"),  # any case
     ],
 )
 def test_ids_in_a_path_are_hidden_in_log_lines(path: str, shown: str) -> None:

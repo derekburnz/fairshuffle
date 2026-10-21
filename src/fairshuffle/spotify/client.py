@@ -52,7 +52,8 @@ _ENCODED_STEP = re.compile(r"%(2e|2f|5c)", re.IGNORECASE)
 # A segment after one of these names an ID, which is the user's own data (a user ID can be the
 # account name), so log lines show {id} in its place.
 _ID_SEGMENT = re.compile(
-    r"/(albums|artists|audiobooks|chapters|episodes|playlists|shows|tracks|users)/[^/]+"
+    r"/(albums|artists|audiobooks|chapters|episodes|playlists|shows|tracks|users)/[^/]+",
+    re.IGNORECASE,
 )
 
 log = logging.getLogger(__name__)
