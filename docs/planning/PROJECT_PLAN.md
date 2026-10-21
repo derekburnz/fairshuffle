@@ -175,7 +175,7 @@ Language-neutral. Stage C maps each box to real modules once D1 is decided.
 7. Refresh token goes to Windows Credential Manager. Access token stays in memory only.
 8. On 401: refresh. On `400 invalid_grant`: delete the stored token and ask the user to sign in again.
 
-**Scopes (least privilege):** `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Confirm in Stage A that nothing else is needed.
+**Scopes (least privilege):** `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Confirm in Stage A that nothing else is needed. Update 2026-10-21 (P2-4): sign-in also asks for `user-read-private` so `GET /me` can give the display name for the menu.
 
 ### 3.2 Shuffle flow
 

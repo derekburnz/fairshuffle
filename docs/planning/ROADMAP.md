@@ -138,13 +138,13 @@ Qt draws the tray and windows on the main thread. Anything that waits on the net
 1. `ui/tray.py`: user clicks Sign in.
 2. `auth/pkce.py`: creates `code_verifier`, `code_challenge` (S256) and `state`.
 3. `auth/loopback.py`: listens on `127.0.0.1` only, on the port from `SPOTIFY_REDIRECT_URI`.
-4. `auth/oauth.py`: opens the browser at `accounts.spotify.com/authorize` with the four playlist scopes.
+4. `auth/oauth.py`: opens the browser at `accounts.spotify.com/authorize` with the four playlist scopes and `user-read-private` (P2-4).
 5. `auth/loopback.py`: accepts one callback, checks `state`, shows "You can close this tab", stops.
 6. `auth/oauth.py`: exchanges `code` plus `code_verifier` for tokens.
 7. `auth/token_store.py`: refresh token to Credential Manager; access token stays in memory.
 8. `spotify/client.py`: on 401 refresh once; on `400 invalid_grant` delete the token and raise `SignInRequired`.
 
-Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Open question for Phase 2 (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The plan assumes `id` and `display_name` come back without them; the researcher confirms before P2-08.
+Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public` and, since P2-4, `user-read-private`. Phase 2's open question (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The plan assumes `id` and `display_name` come back without them; the researcher confirms before P2-08. Settled on 2026-10-21 (P2-4): the docs stay silent, so sign-in also asks for `user-read-private`, never `user-read-email`.
 
 ### 3.4 Shuffle flow mapped to modules
 
