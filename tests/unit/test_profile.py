@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fairshuffle.spotify.profile import MAX_NAME_LENGTH, display_name
+from fairshuffle.spotify.profile import MAX_NAME_LENGTH, display_name, user_id
 
 
 class FakeClient:
@@ -45,3 +45,14 @@ def test_a_long_name_is_cut_with_an_ellipsis() -> None:
     assert name is not None
     assert len(name) == MAX_NAME_LENGTH
     assert name.endswith("…")
+
+
+@pytest.mark.parametrize(
+    ("me", "expected"),
+    [({"id": "fakeuser"}, "fakeuser"), ({"id": ""}, None), ({"id": 7}, None), ({}, None)],
+)
+def test_the_user_id_comes_from_me(me: dict[str, Any], expected: str | None) -> None:
+    client = FakeClient(me)
+
+    assert user_id(client) == expected  # type: ignore[arg-type]
+    assert client.paths == ["/me"]
