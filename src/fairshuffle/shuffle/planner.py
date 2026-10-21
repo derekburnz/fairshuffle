@@ -49,7 +49,12 @@ class Move:
 
 def fast_mode_losses(items: Sequence[PlaylistItem]) -> int:
     """How many entries a fast shuffle would remove: local files and items with no URI."""
-    return sum(1 for item in items if not _writable(item))
+    return len(items) - len(writable_uris(items))
+
+
+def writable_uris(items: Sequence[PlaylistItem]) -> list[str]:
+    """The URIs fast mode can write back, in order: everything but local files and missing items."""
+    return [item.uri for item in items if _writable(item) and item.uri is not None]
 
 
 def fast_plan(target: Sequence[PlaylistItem]) -> list[Replace | Append]:
@@ -59,7 +64,7 @@ def fast_plan(target: Sequence[PlaylistItem]) -> list[Replace | Append]:
     the user first. An order with nothing writable in it would empty the playlist, so that is
     refused: such a playlist can only be shuffled in keep-order mode.
     """
-    uris = [item.uri for item in target if _writable(item) and item.uri is not None]
+    uris = writable_uris(target)
     if not uris:
         raise ValueError("Nothing in this order can be written in fast mode.")
     chunks = [
