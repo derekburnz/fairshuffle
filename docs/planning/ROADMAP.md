@@ -144,7 +144,7 @@ Qt draws the tray and windows on the main thread. Anything that waits on the net
 7. `auth/token_store.py`: refresh token to Credential Manager; access token stays in memory.
 8. `spotify/client.py`: on 401 refresh once; on `400 invalid_grant` delete the token and raise `SignInRequired`.
 
-Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Open question for Phase 2 (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The plan assumes `id` and `display_name` come back without them; the researcher confirms before P2-08. Settled on 2026-10-21 (P2-4): the docs stay silent, so sign-in also asks for `user-read-private`, never `user-read-email`.
+Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public` and, since P2-4, `user-read-private`. Phase 2's open question (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The plan assumes `id` and `display_name` come back without them; the researcher confirms before P2-08. Settled on 2026-10-21 (P2-4): the docs stay silent, so sign-in also asks for `user-read-private`, never `user-read-email`.
 
 ### 3.4 Shuffle flow mapped to modules
 

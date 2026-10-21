@@ -117,13 +117,13 @@ def test_the_authorize_url_asks_for_a_pkce_code_with_our_scopes(settings: Spotif
 
 def test_sign_in_asks_only_for_the_scopes_derek_approved() -> None:
     """Least privilege: a new scope needs a decision first (P2-4 added user-read-private)."""
-    assert set(oauth.SCOPES) == {
+    assert oauth.SCOPES == (
         "playlist-read-private",
         "playlist-read-collaborative",
         "playlist-modify-private",
         "playlist-modify-public",
         "user-read-private",  # only so GET /me returns the name for "Signed in as"
-    }
+    )
 
 
 # Swapping the code for tokens
