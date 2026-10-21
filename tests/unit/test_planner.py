@@ -182,3 +182,10 @@ def test_nothing_lost_in_a_plain_playlist() -> None:
 def test_fast_mode_never_empties_a_playlist(items: list[PlaylistItem]) -> None:
     with pytest.raises(ValueError, match="keep-order|fast mode"):
         fast_plan(items)
+
+
+def test_a_local_uri_without_its_flag_is_still_left_out() -> None:
+    items = [song(0), PlaylistItem(1, LOCAL, "track", is_local=False)]
+
+    assert fast_mode_losses(items) == 1
+    assert fast_plan(items) == [Replace((song(0).uri or "",))]

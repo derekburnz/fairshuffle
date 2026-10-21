@@ -90,4 +90,7 @@ def reorder_plan(target: Sequence[int]) -> list[Move]:
 
 
 def _writable(item: PlaylistItem) -> bool:
-    return item.uri is not None and not item.is_local
+    """A local file is caught by its flag or its URI, in case Spotify ever leaves the flag off."""
+    if item.uri is None or item.is_local:
+        return False
+    return not item.uri.startswith("spotify:local:")
