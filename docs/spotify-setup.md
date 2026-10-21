@@ -2,7 +2,7 @@
 
 FairShuffle talks to Spotify through the Spotify Web API, and Spotify only answers apps it knows about. So before the first sign-in you register your own copy of the app in the Spotify Developer Dashboard. Spotify then gives you a **Client ID**, a public name tag that tells Spotify which app is asking. This takes about five minutes and you do it once.
 
-There is no client secret in this project. FairShuffle signs in with Authorization Code and PKCE, which proves who it is with a fresh one-time code on every sign-in instead of a stored password. The dashboard can show a client secret: leave it hidden, never copy it anywhere and never put it in `.env`.
+There is no client secret in this project. FairShuffle signs in with Authorization Code and PKCE, which proves the sign-in is finished by the same program that started it, using a fresh random secret made for each sign-in instead of a stored password. The dashboard can show a client secret: leave it hidden, never copy it anywhere and never put it in `.env`.
 
 ## Before you start
 
@@ -82,6 +82,6 @@ Spotify doesn't document the exact wording of its sign-in error pages, so the tw
 | Client ID | `.env` in your project folder | Never |
 | Redirect URI | `.env`, and the app's Basic Information page in the dashboard | `.env.example` holds the standard one |
 | Client secret | Nowhere. Not used | Never |
-| Sign-in tokens (M2) | Windows Credential Manager and the app's memory, never a file | Never |
+| Sign-in tokens (M2) | Windows Credential Manager and the app's memory, never a file FairShuffle writes | Never |
 
 The facts in this guide come from the project's checks of Spotify's developer docs (see `.claude/skills/spotify-api-notes/SKILL.md` for the dates). If the dashboard looks different from what is written here, say so in an issue so the guide can be updated.
