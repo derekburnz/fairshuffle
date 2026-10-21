@@ -53,6 +53,10 @@ def read_playlist_items(client: SpotifyClient, playlist_id: str) -> list[Playlis
 
     Positions count every entry, unavailable ones included, because Spotify's reorder call moves
     items by position: an item FairShuffle can't read still takes up its place.
+
+    The items call carries no snapshot_id, so if the playlist changes between pages the positions
+    can drift. The shuffle (M4) must compare the playlist's snapshot_id before and after reading,
+    and send that snapshot_id with each reorder so Spotify refuses a stale one.
     """
     if not _ID.fullmatch(playlist_id):
         raise ValueError("That isn't a Spotify playlist ID.")
@@ -70,21 +74,28 @@ def _entries(
 
     Spotify's "next" link says only whether another page exists; it is never followed. FairShuffle
     asks for the same path with the next offset itself, so a reply can't choose what is fetched
-    next or what the log shows. A page that isn't full but claims a next page, or holds more
-    than asked for, is refused: later pages would land at the wrong positions.
+    next or what the log shows. A page without an items list, one that isn't full but claims a
+    next page, one that holds more than asked for, or more pages than MAX_PAGES, is refused:
+    handing back part of a list could lose songs in a shuffle, and later pages would land at the
+    wrong positions.
     """
     for page_number in range(MAX_PAGES):
         query = {**(params or {}), "limit": PAGE_SIZE, "offset": page_number * PAGE_SIZE}
         page = client.get(path, params=query)
         items = page.get("items")
         if not isinstance(items, list):
-            return
+            raise _not_understood()
         has_next = isinstance(page.get("next"), str) and bool(page["next"])
         if len(items) > PAGE_SIZE or (has_next and len(items) < PAGE_SIZE):
-            raise SpotifyUnavailable("Spotify sent a reply FairShuffle doesn't understand.")
+            raise _not_understood()
         yield from items
         if not has_next:
             return
+    raise _not_understood()  # still more pages after MAX_PAGES: never hand back part of a list
+
+
+def _not_understood() -> SpotifyUnavailable:
+    return SpotifyUnavailable("Spotify sent a reply FairShuffle doesn't understand.")
 
 
 def _playlist(entry: Any) -> Playlist | None:

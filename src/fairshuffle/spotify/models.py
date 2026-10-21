@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,7 @@ class PlaylistItem:
     """
 
     position: int
-    uri: str | None
+    # A local file's URI holds its artist, album and title, so the URI stays out of repr.
+    uri: str | None = field(repr=False)
     kind: str | None
     is_local: bool

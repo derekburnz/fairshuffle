@@ -14,7 +14,8 @@ Every call goes through SpotifyAuth (auth/oauth.py), which adds the access token
 - maps the rest: 403 to NotOwner for playlists and AccessDenied elsewhere, 400 and 404 to
   RequestRejected.
 
-Log lines name the method and path, never the query string or a body.
+Log lines name the method and path with {id} in place of any ID, never the query string or a
+body.
 """
 
 from __future__ import annotations
@@ -48,6 +49,11 @@ API_BASE = "https://api.spotify.com/v1"
 _READS = frozenset({"GET", "HEAD"})
 _REASON = re.compile(r"[A-Z_]{1,40}")  # Spotify's reason codes, such as QUOTA_EXCEEDED
 _ENCODED_STEP = re.compile(r"%(2e|2f|5c)", re.IGNORECASE)
+# A segment after one of these names an ID, which is the user's own data (a user ID can be the
+# account name), so log lines show {id} in its place.
+_ID_SEGMENT = re.compile(
+    r"/(albums|artists|audiobooks|chapters|episodes|playlists|shows|tracks|users)/[^/]+"
+)
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +113,7 @@ class SpotifyClient:
         _check_path(path)
         method = method.upper()
         is_read = method in _READS
-        what = f"{method} {path.partition('?')[0]}"  # a next link's query stays out of the logs
+        what = f"{method} {_log_route(path)}"
         for attempt in range(self._policy.max_attempts):
             last = attempt == self._policy.max_attempts - 1
             response = self._send(method, path, params, body, what, is_read, last)
@@ -207,6 +213,11 @@ class SpotifyClient:
         if data is None:
             raise SpotifyUnavailable("Spotify sent a reply FairShuffle doesn't understand.")
         return data
+
+
+def _log_route(path: str) -> str:
+    """The path as log lines show it: no query string, and {id} in place of each ID."""
+    return _ID_SEGMENT.sub(r"/\1/{id}", path.partition("?")[0])
 
 
 def _check_path(path: str) -> None:

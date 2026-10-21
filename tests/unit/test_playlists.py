@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import requests
 import responses
 from responses import matchers
 
@@ -197,12 +198,24 @@ def test_a_playlist_listed_twice_appears_once(
 
 
 @pytest.mark.parametrize("page", [{}, {"items": None}, {"items": "x", "next": 5}])
-def test_an_odd_page_ends_the_list(
+def test_a_page_without_an_items_list_is_refused(
     spotify: responses.RequestsMock, client: SpotifyClient, page: dict[str, Any]
 ) -> None:
     spotify.get(LIST, json=page)
 
-    assert list_editable_playlists(client, ME_ID) == []
+    with pytest.raises(SpotifyUnavailable, match="doesn't understand"):
+        list_editable_playlists(client, ME_ID)
+
+
+def test_a_later_page_without_items_never_gives_back_part_of_the_list(
+    spotify: responses.RequestsMock, client: SpotifyClient
+) -> None:
+    first = [entry(number) for number in range(1, PAGE_SIZE + 1)]
+    spotify.get(LIST, json={"items": first, "next": f"{LIST}?more"}, match=page_query(0))
+    spotify.get(LIST, json={"error": {"status": 500}}, match=page_query(1))
+
+    with pytest.raises(SpotifyUnavailable, match="doesn't understand"):
+        list_editable_playlists(client, ME_ID)
 
 
 def test_the_next_link_is_never_followed(
@@ -235,7 +248,7 @@ def test_a_page_that_doesnt_add_up_is_refused(
         list_editable_playlists(client, ME_ID)
 
 
-def test_the_page_limit_stops_an_endless_list(
+def test_the_page_limit_stops_an_endless_list_with_an_error(
     spotify: responses.RequestsMock, client: SpotifyClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("fairshuffle.spotify.playlists.MAX_PAGES", 2)
@@ -243,7 +256,8 @@ def test_the_page_limit_stops_an_endless_list(
         items = [entry(number * PAGE_SIZE + n) for n in range(1, PAGE_SIZE + 1)]
         spotify.get(LIST, json={"items": items, "next": f"{LIST}?more"}, match=page_query(number))
 
-    assert len(list_editable_playlists(client, ME_ID)) == 2 * PAGE_SIZE
+    with pytest.raises(SpotifyUnavailable, match="doesn't understand"):
+        list_editable_playlists(client, ME_ID)  # more pages remain: never hand back part of it
     assert len(spotify.calls) == 2
 
 
@@ -386,5 +400,28 @@ def test_items_stay_out_of_the_log(
         read_playlist_items(client, "fakeplaylist1")
 
     assert "Read 4 playlist items" in caplog.text
-    assert "spotify:track" not in caplog.text
-    assert "Fake Local Song" not in caplog.text
+    for private in ("spotify:", "Fake+Local", "Fake Local Song", "fakeplaylist1"):
+        assert private not in caplog.text
+
+
+def test_a_retry_logs_neither_the_playlist_id_nor_the_items(
+    spotify: responses.RequestsMock, client: SpotifyClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    page = json.loads((FIXTURES / "playlist_items_page.json").read_text(encoding="utf-8"))
+    spotify.get(ITEMS, status=503)
+    spotify.get(ITEMS, status=429, headers={"Retry-After": "1"})
+    spotify.get(ITEMS, body=requests.ConnectionError("reset"))
+    spotify.get(ITEMS, json=page)
+
+    with caplog.at_level(logging.DEBUG):
+        read_playlist_items(client, "fakeplaylist1")
+
+    assert "GET /playlists/{id}/items" in caplog.text
+    for private in ("fakeplaylist1", "spotify:", "Fake Local Song"):
+        assert private not in caplog.text
+
+
+def test_an_items_repr_leaves_out_the_uri() -> None:
+    item = PlaylistItem(0, "spotify:local:Fake+Artist:Fake+Album:Fake+Song:200", "track", True)
+
+    assert "Fake" not in repr(item)

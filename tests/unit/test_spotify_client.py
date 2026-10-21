@@ -14,6 +14,7 @@ from responses import matchers
 from fairshuffle import __version__
 from fairshuffle.auth.oauth import SignInRequired, SpotifyAuth, Tokens
 from fairshuffle.config import load_settings
+from fairshuffle.spotify import client as client_module
 from fairshuffle.spotify import errors
 from fairshuffle.spotify.client import API_BASE, SpotifyClient, new_session
 from fairshuffle.spotify.errors import (
@@ -447,9 +448,24 @@ def test_logs_name_the_path_but_never_the_query_or_body(
     client.get("/playlists/fake-playlist-id/items", {"fields": "fake-secret-field", "limit": 50})
 
     text = "\n".join(record.getMessage() for record in caplog.records)
-    assert "GET /playlists/fake-playlist-id/items" in text
+    assert "GET /playlists/{id}/items: waiting" in text
+    assert "fake-playlist-id" not in text  # IDs are the user's own data
     assert "fake-secret-field" not in text
     assert FAKE_ACCESS not in text
+
+
+@pytest.mark.parametrize(
+    ("path", "shown"),
+    [
+        ("/me", "/me"),
+        ("/me/playlists", "/me/playlists"),
+        ("/playlists/abc123/items", "/playlists/{id}/items"),
+        ("/users/fake-account-name/playlists", "/users/{id}/playlists"),
+        ("/tracks/abc?market=XX", "/tracks/{id}"),
+    ],
+)
+def test_ids_in_a_path_are_hidden_in_log_lines(path: str, shown: str) -> None:
+    assert client_module._log_route(path) == shown
 
 
 def test_a_next_links_query_stays_out_of_the_logs(
@@ -464,7 +480,7 @@ def test_a_next_links_query_stays_out_of_the_logs(
     client.get_url(f"{ITEMS}?offset=50&fields=fake-secret-field")
 
     text = "\n".join(record.getMessage() for record in caplog.records)
-    assert "GET /playlists/fake-playlist-id/items: waiting" in text
+    assert "GET /playlists/{id}/items: waiting" in text
     assert "fake-secret-field" not in text
     assert "offset" not in text
 
