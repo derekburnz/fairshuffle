@@ -185,6 +185,12 @@ def test_a_wrong_read_back_leaves_no_file(monkeypatch: pytest.MonkeyPatch) -> No
     assert list(paths.backup_dir().iterdir()) == []
 
 
+def test_a_backup_its_own_checks_refuse_leaves_no_file() -> None:
+    with pytest.raises(BackupError):
+        backups.save("fakelist", "fake snapshot with spaces", mixed())
+    assert list(paths.backup_dir().iterdir()) == []
+
+
 def test_a_huge_file_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     backups.save("fakelist", "fake-snapshot-1", mixed())
     monkeypatch.setattr(backups, "MAX_FILE_BYTES", 10)

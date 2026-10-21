@@ -68,7 +68,11 @@ def save(playlist_id: str, snapshot_id: str, items: Sequence[PlaylistItem]) -> B
     try:
         folder.mkdir(parents=True, exist_ok=True)
         _write_atomically(path, json.dumps(_to_json(backup), ensure_ascii=False))
-        if load(path) != backup:
+        try:
+            read_back: Backup | None = load(path)
+        except BackupError:
+            read_back = None
+        if read_back != backup:
             path.unlink(missing_ok=True)  # never leave a wrong copy for Undo to find
             raise BackupError("The backup didn't read back the same.")
     except OSError:
