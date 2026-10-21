@@ -13,6 +13,7 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
 import keyring
 import pytest
@@ -44,6 +45,12 @@ def fake_spotify_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give every test obvious fake Spotify settings in place of any real ones."""
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", FAKE_CLIENT_ID)
     monkeypatch.setenv("SPOTIFY_REDIRECT_URI", FAKE_REDIRECT_URI)
+
+
+@pytest.fixture(autouse=True)
+def no_dev_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point the settings loader at a .env that doesn't exist, so no test reads the real one."""
+    monkeypatch.setattr("fairshuffle.config.dev_env_file", lambda: tmp_path / "no-such.env")
 
 
 @pytest.fixture(autouse=True)
