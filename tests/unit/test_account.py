@@ -352,6 +352,7 @@ def test_shutdown_cancels_a_sign_in_and_drops_late_results(seen: list[AccountSta
     account.sign_in()
 
     account.shutdown()
+    FakeSignIn.result = ListenerCancelled("Sign-in was cancelled.")  # what cancel() leads to
     runner.release()
 
     assert FakeSignIn.created[0].cancelled
