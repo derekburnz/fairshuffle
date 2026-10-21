@@ -11,11 +11,14 @@ store in place of Windows Credential Manager, so no test can read or overwrite a
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
+import socket
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import keyring
 import pytest
@@ -23,6 +26,7 @@ from keyring.backend import KeyringBackend
 from keyring.backends import fail
 from keyring.errors import PasswordDeleteError
 from PySide6.QtCore import qInstallMessageHandler
+from pytest_socket import SocketBlockedError
 
 from fairshuffle.storage import logging_setup
 from fairshuffle.storage.logging_setup import stop_logging
@@ -64,6 +68,41 @@ def no_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
         monkeypatch.delenv(name.lower(), raising=False)
     monkeypatch.setattr("requests.utils.getproxies", dict)
+
+
+LOCAL_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+@pytest.fixture(autouse=True)
+def no_name_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refuse DNS lookups for host names other than this PC's.
+
+    A stray real call then fails the same way everywhere. Without this, a sandbox with no DNS
+    turns it into a quiet ConnectionError, while a PC with DNS gets as far as the connect block.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+
+    def local_only(host: str | bytes | None, *args: Any, **kwargs: Any) -> Any:
+        if host is None or _is_local_or_literal(host):
+            return real_getaddrinfo(host, *args, **kwargs)
+        raise SocketBlockedError()
+
+    monkeypatch.setattr(socket, "getaddrinfo", local_only)
+
+
+def _is_local_or_literal(host: object) -> bool:
+    """True for this PC's names and for IP addresses, which need no DNS. pytest-socket still
+    blocks connecting to any address but 127.0.0.1 and ::1."""
+    if not isinstance(host, (str, bytes)):
+        return False
+    text = host.decode() if isinstance(host, bytes) else host
+    if text in LOCAL_NAMES:
+        return True
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    return True
 
 
 @pytest.fixture(autouse=True)

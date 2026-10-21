@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from fairshuffle import __version__
 from fairshuffle.storage.logging_setup import setup_logging
+from fairshuffle.ui.account import AccountController
 from fairshuffle.ui.tray import TrayIcon
 
 APP_NAME = "FairShuffle"
@@ -213,7 +214,6 @@ def run() -> int:
     if not instance.acquire():
         return 0  # FairShuffle is already running; that copy shows the user where its icon is
     log.info("FairShuffle %s starting", __version__)
-    app.aboutToQuit.connect(instance.release)
     if not QSystemTrayIcon.isSystemTrayAvailable():
         log.error("The Windows notification area is not available; exiting")
         QMessageBox.critical(
@@ -223,9 +223,14 @@ def run() -> int:
         )
         instance.release()
         return 1
-    tray = TrayIcon(quit_app=app.quit)
+    account = AccountController()
+    # In this order: the account's jobs wrap up before the lock lets a new copy start.
+    app.aboutToQuit.connect(account.shutdown)
+    app.aboutToQuit.connect(instance.release)
+    tray = TrayIcon(quit_app=app.quit, account=account)
     instance.activation_requested.connect(tray.show_already_running)
     tray.show()
+    account.start()  # resumes a saved sign-in without the browser
     exit_code = app.exec()
     log.info("FairShuffle quit with exit code %d", exit_code)
     return exit_code

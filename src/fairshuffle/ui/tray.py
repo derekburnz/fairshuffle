@@ -9,8 +9,35 @@ from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
 from fairshuffle.ui.about import build_about_box
+from fairshuffle.ui.account import AccountController, AccountState, AccountStatus
 
 TOOLTIP = "FairShuffle"
+
+# For each account state: the greyed-out line at the top of the menu, then the account action's
+# label and what it does (None hides the action).
+_STATUS_LINES = {
+    AccountState.CHECKING: "Checking your Spotify sign-in\u2026",
+    AccountState.SIGNED_OUT: "Not signed in to Spotify",
+    AccountState.SIGNING_IN: "Waiting for you to sign in in your browser\u2026",
+    AccountState.SIGNED_IN: "Signed in to Spotify",
+    AccountState.SIGN_IN_AGAIN: "Your Spotify sign-in has expired",
+    AccountState.SETUP_NEEDED: "Spotify app not set up yet (see docs/spotify-setup.md)",
+    AccountState.UNAVAILABLE: "Couldn't check your Spotify sign-in",
+}
+_ACTION_LABELS = {
+    AccountState.CHECKING: None,
+    AccountState.SIGNED_OUT: "&Sign in to Spotify\u2026",
+    AccountState.SIGNING_IN: "&Cancel sign-in",
+    AccountState.SIGNED_IN: "Sign &out",
+    AccountState.SIGN_IN_AGAIN: "&Sign in again\u2026",
+    AccountState.SETUP_NEEDED: "&Sign in to Spotify\u2026",
+    AccountState.UNAVAILABLE: "&Try again",
+}
+
+
+def _menu_text(text: str) -> str:
+    """Show text as it is in a menu: Qt would read a single & as a keyboard shortcut marker."""
+    return text.replace("&", "&&")
 
 
 def placeholder_icon() -> QIcon:
@@ -41,15 +68,31 @@ class TrayIcon(QSystemTrayIcon):
     keys move and the underlined letters pick an item.
     """
 
-    def __init__(self, quit_app: Callable[[], None], parent: QObject | None = None) -> None:
+    def __init__(
+        self,
+        quit_app: Callable[[], None],
+        account: AccountController | None = None,
+        parent: QObject | None = None,
+    ) -> None:
         super().__init__(placeholder_icon(), parent)
         self._quit_app = quit_app
+        self._account = account
         self._about_box: QMessageBox | None = None
         self.setToolTip(TOOLTIP)
 
         # A QSystemTrayIcon is not a widget, so the menu has no Qt parent. This attribute keeps
         # it alive for as long as the icon exists.
         self.menu = QMenu()
+        self.status_action = QAction(self.menu)
+        self.status_action.setEnabled(False)  # a label, not something to click
+        self.account_action = QAction(self.menu)
+        self.account_action.triggered.connect(self._on_account_action)
+        if account is not None:
+            self.menu.addAction(self.status_action)
+            self.menu.addAction(self.account_action)
+            self.menu.addSeparator()
+            account.status_changed.connect(self.show_account_status)
+            self.show_account_status(account.status)
         self.about_action = QAction("&About FairShuffle", self.menu)
         self.about_action.triggered.connect(self.show_about)
         self.quit_action = QAction("&Quit", self.menu)
@@ -76,6 +119,19 @@ class TrayIcon(QSystemTrayIcon):
         self._about_box.finished.connect(self._forget_about_box)
         self._about_box.open()
 
+    def show_account_status(self, status: AccountStatus) -> None:
+        """Bring the account lines of the menu up to date, and pass on any message once."""
+        line = _STATUS_LINES[status.state]
+        if status.state is AccountState.SIGNED_IN and status.name:
+            line = f"Signed in as {status.name}"
+        self.status_action.setText(_menu_text(line))
+        label = _ACTION_LABELS[status.state]
+        self.account_action.setVisible(label is not None)
+        self.account_action.setText(label or "")
+        self.setToolTip(f"{TOOLTIP}\n{line}")
+        if status.message:
+            self.showMessage(TOOLTIP, status.message, QSystemTrayIcon.MessageIcon.Information, 5000)
+
     def show_already_running(self) -> None:
         """Answer a second launch by pointing at this icon instead of adding another one."""
         self.showMessage(
@@ -89,6 +145,20 @@ class TrayIcon(QSystemTrayIcon):
         """Take the icon out of the notification area, then end the app with exit code 0."""
         self.hide()
         self._quit_app()
+
+    def _on_account_action(self) -> None:
+        account = self._account
+        if account is None:  # pragma: no cover  # the action is only in the menu with an account
+            return
+        state = account.status.state
+        if state is AccountState.SIGNING_IN:
+            account.cancel_sign_in()
+        elif state is AccountState.SIGNED_IN:
+            account.sign_out()
+        elif state is AccountState.UNAVAILABLE:
+            account.start()
+        else:
+            account.sign_in()
 
     def _forget_about_box(self) -> None:
         self._about_box = None
