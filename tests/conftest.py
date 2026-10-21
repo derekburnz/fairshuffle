@@ -123,8 +123,10 @@ def instance_key(monkeypatch: pytest.MonkeyPatch) -> str:
 def isolated_logging(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[None]:
-    """Point the logs folder at a temp folder, then undo any logging setup the test did."""
+    """Point the logs, backups and settings folders at temp folders, then undo any logging setup
+    the test did."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path_factory.mktemp("LocalAppData")))
+    monkeypatch.setenv("APPDATA", str(tmp_path_factory.mktemp("AppData")))  # backups, settings
     root = logging.getLogger()
     level = root.level
     yield
