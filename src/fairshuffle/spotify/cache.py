@@ -20,7 +20,7 @@ from fairshuffle.spotify.models import Playlist, PlaylistItem
 from fairshuffle.spotify.playlists import read_playlist_items
 
 MAX_PLAYLISTS = 50  # the least recently used playlist is forgotten past this many
-MAX_ITEMS = 50_000  # items kept across all playlists, a few MB; a bigger playlist isn't kept
+MAX_ITEMS = 50_000  # across all playlists: a few MB, about 50 MB at worst; a bigger one isn't kept
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +76,8 @@ class PlaylistItemsCache:
         return items
 
     def forget(self, playlist_id: str) -> None:
-        """Drop one playlist, for example after FairShuffle itself has reordered it."""
+        """Drop one playlist, for example after FairShuffle itself has reordered it. Reads of other
+        playlists under way at the time aren't stored either, which only costs a later read."""
         with self._lock:
             self._generation += 1
             self._pop(playlist_id)
