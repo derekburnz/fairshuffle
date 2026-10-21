@@ -18,8 +18,8 @@ Claude fills this in after each answer.
 | D6 | Workflow level | A. Full team workflow | 2026-10-09 | Closest to a real job and the best resume signal. |
 | D7 | Claude Code toolkit | All recommended plus docs-writer and pr-review-toolkit; not commit-commands | 2026-10-09 | Full toolkit; commit-commands overlaps ship-change. |
 | D8 | Teaching style | A. Explanatory | 2026-10-09 | Claude explains each implementation choice; switch to Learning per phase if wanted. |
-| D9 | Spotify library or own client | pending (Phase 2) | | |
-| D10 | Token storage | pending (Phase 2) | | |
+| D9 | Spotify library or own client | B. Own small client on requests (the card added the HTTP library: A spotipy, B own client on requests, C own client on httpx, D own client on urllib) | 2026-10-21 | requests is the maintained industry default, and our own client gives full control of retries, pacing and log redaction. |
+| D10 | Token storage | A. Windows Credential Manager through keyring (refresh token under service FairShuffle; access token in memory only) | 2026-10-21 | The standard way Windows apps keep secrets; matches Rule 2 with the least custom security code. |
 | D11 | Tray UI shape | pending (Phase 3) | | |
 | D12 | Shuffle strategy | pending (Phase 4) | | |
 | D13 | Backup and undo | pending (Phase 4) | | |
@@ -66,6 +66,10 @@ Claude fills this in after each answer.
 | P1-1 | Required CI checks on `main` (#4) | Yes, from Derek's PC: `lint and type check (Windows)` and `tests (Windows)` join `gitleaks` as required checks in the "Protect main" ruleset, all tied to GitHub Actions; set with `gh` on Derek's typed go-ahead | 2026-10-20 | Required checks on `main` are standard on team repos, so a red check now blocks the merge. |
 | P1-2 | What's next after Phase 1 | Check on my PC, then tag: Derek's PC synced to `main` and he ran FairShuffle from source (icon under `^`, About, a second launch, Quit); on his typed go-ahead v0.1.0 was tagged on b27acfa and released | 2026-10-20 | A person checks a build by hand before it is released, as the M1 definition of done asks. |
 | P1-3 | What's next now that v0.1.0 is out | Tidy, then Phase 2: one issue (#72) and one pull request log P1-2 and P1-3 and mark Phase 1 complete, M1 is closed, then Phase 2 starts in its own thread | 2026-10-20 | Closing a milestone before the next one starts keeps the board and the decision log honest, as at the end of Phase 0 (P0-24). |
+| P2-1 | Feature branch pushes in M2 | Push freely: Claude pushes feature branches for the rest of M2 without asking and says when each PR is up; tags, releases, repo settings and deletions are still asked one at a time | 2026-10-21 | The protected `main` and the PR checks are the real gate, as on company teams, and work keeps moving while Derek is away. |
+| P2-2 | How tests fake Spotify's HTTP replies and block real network | responses (fake replies for requests) plus pytest-socket (any socket other than 127.0.0.1 fails the test); both dev-only | 2026-10-21 | Current, widely used tools, so the tests read like ones at a company, and the guard is configuration instead of custom code. |
+| P2-3 | How config.py reads the Client ID in development | python-dotenv reads the gitignored `.env` in the project folder; real environment variables win over the file; the Client ID goes to `mask_secret()` at once. The release build's answer stays with D17 | 2026-10-21 | The usual Python library for `.env` files, small and current, and it keeps the plan and setup guide as written. |
+| P2-4 | Scopes for the "Signed in as" name | Add `user-read-private` now: sign-in asks for the four playlist scopes plus `user-read-private`, so `GET /me` can return `display_name`; `user-read-email` is never asked for | 2026-10-21 | Spotify's scopes page lists `user-read-private` as the scope `/me` needs and the docs don't say the name comes back without it, so asking for it avoids a guess; the fields it adds besides the name are gone for development mode apps. |
 
 ---
 
@@ -228,6 +232,8 @@ Why it matters: the Spotify API changed a lot in 2026 and may change again.
 | C. Library for sign-in only, own client for playlist calls | Balance | Two styles in one codebase | Medium |
 
 Recommendation: B, because we only need a handful of endpoints and it is the stronger networking and resume story. (For Tauri, B is effectively required.)
+
+Asked on 2026-10-20 with the HTTP library folded in, since ROADMAP section 2 puts it inside D9. Checked on PyPI that day: spotipy 2.26.0 (March 2026, its default token cache is a plain file), requests 2.34.2 (May 2026), httpx 0.28.1 (no stable release since December 2024). Options asked: A. spotipy, B. own client on requests, C. own client on httpx, D. own client on the standard library's urllib. Derek chose B.
 
 ### D10: Token storage (Phase 2)
 

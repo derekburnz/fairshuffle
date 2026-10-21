@@ -2,6 +2,8 @@
 
 Qt runs headless, so tests never draw on screen and need no desktop session, and every test
 sees fake Spotify settings, so no test can pick up a real Client ID from .env or the shell.
+pytest-socket (pyproject.toml) refuses every connection except to this PC, and no test may use a
+proxy, so no test can reach the real network.
 Each test also gets its own single-instance key and its own logs folder, so tests never collide
 with each other or with a FairShuffle copy the developer has running, and an in-memory password
 store in place of Windows Credential Manager, so no test can read or overwrite a real sign-in.
@@ -9,10 +11,14 @@ store in place of Windows Credential Manager, so no test can read or overwrite a
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
+import socket
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 import keyring
 import pytest
@@ -20,6 +26,7 @@ from keyring.backend import KeyringBackend
 from keyring.backends import fail
 from keyring.errors import PasswordDeleteError
 from PySide6.QtCore import qInstallMessageHandler
+from pytest_socket import SocketBlockedError
 
 from fairshuffle.storage import logging_setup
 from fairshuffle.storage.logging_setup import stop_logging
@@ -44,6 +51,64 @@ def fake_spotify_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give every test obvious fake Spotify settings in place of any real ones."""
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", FAKE_CLIENT_ID)
     monkeypatch.setenv("SPOTIFY_REDIRECT_URI", FAKE_REDIRECT_URI)
+
+
+PROXY_VARIABLES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+
+
+@pytest.fixture(autouse=True)
+def no_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop requests from using a proxy, so pytest-socket's loopback-only rule holds.
+
+    pytest-socket allows 127.0.0.1, and a proxy on 127.0.0.1 (Fiddler, a company agent, a cloud
+    sandbox) would carry a request out to the internet. requests finds proxies in these variables
+    and, on Windows, in the system settings, so both are switched off.
+    """
+    for name in PROXY_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
+    monkeypatch.setattr("requests.utils.getproxies", dict)
+
+
+LOCAL_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+@pytest.fixture(autouse=True)
+def no_name_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refuse DNS lookups for host names other than this PC's.
+
+    A stray real call then fails the same way everywhere. Without this, a sandbox with no DNS
+    turns it into a quiet ConnectionError, while a PC with DNS gets as far as the connect block.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+
+    def local_only(host: str | bytes | None, *args: Any, **kwargs: Any) -> Any:
+        if host is None or _is_local_or_literal(host):
+            return real_getaddrinfo(host, *args, **kwargs)
+        raise SocketBlockedError()
+
+    monkeypatch.setattr(socket, "getaddrinfo", local_only)
+
+
+def _is_local_or_literal(host: object) -> bool:
+    """True for this PC's names and for IP addresses, which need no DNS. pytest-socket still
+    blocks connecting to any address but 127.0.0.1 and ::1."""
+    if not isinstance(host, (str, bytes)):
+        return False
+    text = host.decode() if isinstance(host, bytes) else host
+    if text in LOCAL_NAMES:
+        return True
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    return True
+
+
+@pytest.fixture(autouse=True)
+def no_dev_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point the settings loader at a .env that doesn't exist, so no test reads the real one."""
+    monkeypatch.setattr("fairshuffle.config.dev_env_file", lambda: tmp_path / "no-such.env")
 
 
 @pytest.fixture(autouse=True)

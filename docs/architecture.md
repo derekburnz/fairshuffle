@@ -10,11 +10,19 @@ M1 (v0.1.0) builds the app's frame, and M2 (v0.2.0, in progress) adds signing in
 |--------|------------------|
 | `__main__.py` | Parses `--version`, then starts the app |
 | `app.py` | Starts logging, builds the `QApplication`, runs the single-instance guard and shows the tray icon. The first copy holds a lock file in the user's temp folder and listens on a per-user local socket (a named pipe on Windows); a later launch connects, hangs up and exits, and the first copy shows a tray message. The guard fails open: if the lock can't be used, the app still starts |
-| `ui/tray.py` | Tray icon with a placeholder image, tooltip and the About and Quit menu |
+| `config.py` | Reads `SPOTIFY_CLIENT_ID` and `SPOTIFY_REDIRECT_URI`: the environment first, then the gitignored `.env` in a source checkout (python-dotenv, P2-3). An empty or placeholder Client ID, or a Redirect URI that isn't `http://127.0.0.1` with a port, stops with a message pointing at `docs/spotify-setup.md`. Masks the Client ID as soon as it is read; tests point it at a `.env` that doesn't exist (M2) |
+| `ui/tray.py` | Tray icon with a placeholder image, tooltip and menu. The menu starts with a greyed-out account line ("Signed in as ...", "Not signed in to Spotify", "Your Spotify sign-in has expired") and one account action (Sign in, Cancel sign-in, Sign out, Sign in again or Try again), then About and Quit. Account messages appear once as tray notifications |
+| `ui/account.py` | The account behind the menu. At start it resumes a saved sign-in without the browser. Sign in, sign out and the `/me` lookup run on Qt's thread pool and report back through a signal, so the tray never freezes. A result that arrives after the user moved on is dropped. The display name is shown, never logged (M2) |
 | `ui/about.py` | About box with version, license and source link |
 | `auth/pkce.py` | Makes the one-time values for a PKCE sign-in (RFC 7636): a 43-character `code_verifier` and a `state` from the `secrets` module, and the S256 `code_challenge`. `state` is compared in constant time. Pure functions, no I/O (M2) |
 | `auth/loopback.py` | One-shot web listener for Spotify's sign-in callback. Reads and checks the Redirect URI (`http://127.0.0.1` with a port, never `localhost`), binds to 127.0.0.1 only (exclusively on Windows), answers on that path only, checks `state` before anything else, returns the code and stops after the first callback or a timeout (five minutes by default). It serves no files and never logs a request line, because the query holds the code (M2) |
+| `auth/oauth.py` | Spotify's token endpoint over requests (D9): builds the authorize URL with the four playlist scopes plus `user-read-private` for the profile name (P2-4), swaps the code plus `code_verifier` for tokens, refreshes and keeps the old refresh token when Spotify sends no new one. `SpotifyAuth` holds one run's sign-in, shared by worker threads under a lock: it refreshes a minute before the access token runs out, and on a 401 refreshes once and sends the call again. It sends the token only to `https://api.spotify.com`, refuses a session with certificate checks off, and once Spotify ends the sign-in no other thread asks again. `400 invalid_grant` is never retried: the saved token is removed and `SignInRequired` is raised. No client secret, no redirects on token calls, every code and token masked, errors quote only Spotify's short error code (M2) |
+| `auth/sign_in.py` | One browser sign-in: makes the PKCE values, binds the listener before opening the browser, waits for the callback and swaps the code for tokens. `cancel()` works from any thread (M2) |
 | `auth/token_store.py` | Saves, loads and deletes the Spotify refresh token in Windows Credential Manager through keyring (D10), under service `FairShuffle`, account `spotify-refresh-token`. Registers every token it sees with `mask_secret()`; its errors never quote a token or carry the store's own exception. Credential Manager is per Windows user, not per app, so any program running as that user could read the entry; that is the accepted limit of D10. Tests get an in-memory store, and outside it keyring's fail backend, so no test or child process can reach the real one (M2) |
+| `spotify/client.py` | Sends every Web API call through `SpotifyAuth`. Waits and retries on 429 (`Retry-After`, or backoff when it is missing) but hands `QUOTA_EXCEEDED` and waits over a minute back as `RateLimited`. Backs off on 5xx and dropped connections for reads only: a change such as a reorder is retried only when it surely never took effect (a 429, or a connection that never opened), and otherwise `SpotifyUnavailable(may_have_applied=True)` tells the caller to re-read the playlist first. Maps 403 to `NotOwner` for playlists and `AccessDenied` elsewhere. Follows only `https://api.spotify.com/v1/` links, never follows a redirect, refuses paths with `..` or control characters and never logs a query string or body (M2) |
+| `spotify/ratelimit.py` | Reads `Retry-After` and the `QUOTA_EXCEEDED` body, and gives the exponential backoff with full jitter (a random wait up to 1, 2, 4... seconds, capped at 30) used when Spotify gives no wait (M2) |
+| `spotify/profile.py` | Reads `display_name` from `GET /me` for the menu, with control and direction characters removed and long names cut (M2) |
+| `spotify/errors.py` | The errors the app shows the user: `SignInRequired`, `AccessDenied`, `NotOwner`, `RateLimited`, `SpotifyUnavailable` and `RequestRejected`. Messages quote only the status and Spotify's reason code (M2) |
 | `storage/paths.py` | Finds `%LOCALAPPDATA%\FairShuffle` |
 | `storage/logging_setup.py` | Rotating log files (1 MB, five old files kept). Before a line is written, Authorization headers, Bearer tokens, `code` and any field whose name ends in `token`, `secret`, `verifier` or `client_id` are masked in any letter case, along with exact values such as the Client ID that code registers with `mask_secret()`. The home folder is written as `%USERPROFILE%` so the Windows user name stays out of paths under it. Qt's own warnings and uncaught errors go to the same file |
 
@@ -105,18 +113,18 @@ fairshuffle/
 
 Qt draws the tray and windows on the main thread. Anything that waits on the network (sign-in, listing playlists, a shuffle) runs in a worker from `QThreadPool` and reports back through Qt signals. The networking analogy: the main thread is the control plane that must stay responsive; workers are the data plane doing the heavy forwarding. `engine.py`, `planner.py`, `verify.py` and `pkce.py` are pure functions with no I/O, so most tests need neither Qt nor a network.
 
-## Sign-in flow mapped to modules (planned for M2)
+## Sign-in flow mapped to modules (built in M2)
 
-1. `ui/tray.py`: user clicks Sign in.
+1. `ui/tray.py`: user clicks Sign in; `ui/account.py` starts `auth/sign_in.py` on a worker thread.
 2. `auth/pkce.py`: creates `code_verifier`, `code_challenge` (S256) and `state`.
 3. `auth/loopback.py`: listens on `127.0.0.1` only, on the port from `SPOTIFY_REDIRECT_URI`.
-4. `auth/oauth.py`: opens the browser at `accounts.spotify.com/authorize` with the four playlist scopes.
+4. `auth/oauth.py`: opens the browser at `accounts.spotify.com/authorize` with the four playlist scopes and `user-read-private`.
 5. `auth/loopback.py`: accepts one callback, checks `state`, shows "You can close this tab", stops.
 6. `auth/oauth.py`: exchanges `code` plus `code_verifier` for tokens.
 7. `auth/token_store.py`: refresh token to Credential Manager; access token stays in memory.
-8. `spotify/client.py`: on 401 refresh once; on `400 invalid_grant` delete the token and raise `SignInRequired`.
+8. `auth/oauth.py` (`SpotifyAuth`): on 401 refresh once and retry; on `400 invalid_grant` delete the token and raise `SignInRequired`. `spotify/client.py` sends every API call through it.
 
-Scopes stay least privilege: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Open question for Phase 2 (issue P2-02): the `GET /me` reference page lists `user-read-private` and `user-read-email` as scopes, but they only unlock deprecated fields (email, country, product). The plan assumes `id` and `display_name` come back without them; the researcher confirms before P2-08.
+Scopes are the four playlist scopes, `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private` and `playlist-modify-public`, plus `user-read-private`. Spotify's scopes page lists `user-read-private` as the scope `GET /me` needs, and the docs don't say whether `display_name` comes back without it, so Derek chose to ask for it (P2-4). Its other fields (country, product, explicit content) are gone for development mode apps, so it adds nothing else. `user-read-email` is not asked for. If Spotify gives no name, the menu falls back to "Signed in to Spotify".
 
 ## Shuffle flow mapped to modules (planned for M3 and M4)
 

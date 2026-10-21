@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from fairshuffle import __version__, app
 from fairshuffle.storage.logging_setup import HOME_MASK
+from fairshuffle.ui.account import AccountController
 from fairshuffle.ui.tray import TrayIcon
 
 
@@ -24,8 +25,10 @@ def read_log() -> str:
     return log_file.read_text(encoding="utf-8")
 
 
-def tray_that_quits_once_running(quit_app: Callable[[], None]) -> TrayIcon:
-    tray = TrayIcon(quit_app=quit_app)
+def tray_that_quits_once_running(
+    quit_app: Callable[[], None], account: AccountController | None = None
+) -> TrayIcon:
+    tray = TrayIcon(quit_app=quit_app, account=account)
     # Picks Quit from the menu as soon as the event loop is running.
     QTimer.singleShot(0, tray.quit_action.trigger)
     return tray
@@ -48,8 +51,13 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: True))
     created: list[TrayIcon] = []
 
-    def record_tray(quit_app: Callable[[], None]) -> TrayIcon:
-        created.append(tray_that_quits_once_running(quit_app))
+    accounts: list[AccountController | None] = []
+
+    def record_tray(
+        quit_app: Callable[[], None], account: AccountController | None = None
+    ) -> TrayIcon:
+        accounts.append(account)
+        created.append(tray_that_quits_once_running(quit_app, account))
         return created[-1]
 
     monkeypatch.setattr(app, "TrayIcon", record_tray)
@@ -57,6 +65,7 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     assert app.run() == 0
     assert len(created) == 1
     assert not created[0].isVisible()
+    assert isinstance(accounts[0], AccountController)  # the menu has the account items
 
 
 def test_run_explains_and_exits_with_code_one_without_a_notification_area(
@@ -94,8 +103,10 @@ def test_a_later_launch_makes_the_running_copy_point_at_its_icon(
     monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: True))
     titles: list[str] = []
 
-    def tray_that_records_messages(quit_app: Callable[[], None]) -> TrayIcon:
-        tray = TrayIcon(quit_app=quit_app)
+    def tray_that_records_messages(
+        quit_app: Callable[[], None], account: AccountController | None = None
+    ) -> TrayIcon:
+        tray = TrayIcon(quit_app=quit_app)  # no account: its notices would race this one
 
         def record_then_quit(title: str, *_: object) -> None:
             titles.append(title)

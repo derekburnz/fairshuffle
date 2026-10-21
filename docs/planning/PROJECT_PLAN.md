@@ -80,7 +80,7 @@ Our improvements to aim for: a backup and undo, progress and cancel, graceful ra
 |---|-------------------------------|----------------------|
 | 1 | Development mode apps require the app owner to have Spotify Premium (new apps from Feb 11, 2026; existing apps from Mar 9, 2026). | Derek needs Premium to own the app. |
 | 2 | Development mode allows up to 5 authorized users per app. Since July 2026 a developer can create up to 25 Client IDs, but quotas are counted per developer account. Individuals cannot get extended quota. | Personal tool plus up to 4 friends. Anyone else follows a "bring your own Client ID" guide in the README. |
-| 3 | Playlist endpoints were renamed from `/playlists/{id}/tracks` to `/playlists/{id}/items` (GET, POST, PUT, DELETE). In responses the `tracks` field became `items` and `tracks.track` became `items.item`. Old paths return 403 for dev mode apps. | Use `/items` only. Many tutorials and older libraries are now wrong. |
+| 3 | Playlist endpoints were renamed from `/playlists/{id}/tracks` to `/playlists/{id}/items` (GET, POST, PUT, DELETE). In responses the `tracks` field became `items` and `tracks.track` became `items.item`. Old paths are listed as removed for dev mode apps created after Feb 11, 2026 (status code undocumented; re-checked 2026-10-21). | Use `/items` only. Many tutorials and older libraries are now wrong. |
 | 4 | `GET /playlists/{id}/items`: max 50 per page (default 20). Only works for playlists the user owns or collaborates on; others return 403. | Page through in 50s. Only list owned or collaborative playlists. |
 | 5 | `PUT /playlists/{id}/items` does either reorder (`range_start`, `insert_before`, `range_length`, `snapshot_id`) or replace (`uris`, max 100 per request). They cannot be combined in one request. | Two shuffle strategies are possible (see 2.4 and D12). |
 | 6 | `POST /users/{id}/playlists` became `POST /me/playlists`. `GET /users/{id}/playlists` became `GET /me/playlists`. `GET /users/{id}` removed. | Use `/me` paths everywhere. |
@@ -91,7 +91,7 @@ Our improvements to aim for: a backup and undo, progress and cancel, graceful ra
 | 11 | Rate limits use a rolling 30-second window. A 429 response includes `Retry-After`. Since July 2026 quota overruns return 429 with `"reason": "QUOTA_EXCEEDED"`. Numeric limits are not published. | Pace requests, honour `Retry-After`, count calls and show progress. |
 | 12 | Branding: an app name must not include "Spotify" or sound like it; "for Spotify" wording is acceptable. Spotify content shown in the app must be attributed per the design guidelines. | App name decision D3. Original icon, not the Spotify logo. |
 | 13 | Libraries: `spotipy` 2.26.0 (Mar 3, 2026) moved to `/items`. `SpotifyAPI.Web` 7.3.0 (Feb 15, 2026) implemented the Feb 2026 changes and 7.4.2 (Mar 4, 2026) fixed playlist replace. Rust's `rspotify`: **corrected in Stage A re-check (Sept 24, 2026)** — 0.16.0 added `/items` support and the Feb 2026 removals, and 0.16.1 is the current release (Apr 25, 2026). The earlier "still on 0.14.0" note was wrong. | Library choice D9. A small hand-written client is also realistic. For Tauri, `rspotify` 0.16.1 is now a real option, so an own client is a choice rather than a requirement. |
-| 14 | Liked Songs is not a playlist, so it cannot be reordered. `GET /me/tracks` (read Liked Songs, max 50 per page, scope `user-library-read`) still exists (Stage A). The Feb 2026 changelog contradicts itself on this endpoint, so re-check before building on it. | Backlog idea is feasible: copy Liked Songs into a playlist, then shuffle. Needs one extra scope. |
+| 14 | Liked Songs is not a playlist, so it cannot be reordered. `GET /me/tracks` (read Liked Songs, max 50 per page, scope `user-library-read`) still exists (Stage A). The Feb 2026 changelog lists it as still available (re-checked 2026-10-21). | Backlog idea is feasible: copy Liked Songs into a playlist, then shuffle. Needs one extra scope. |
 
 Verified in Stage A: the Web API cannot add local files to a playlist, but it can reorder and remove them (Spotify "Playlists" concept page). So reorder (strategy A) keeps local files and replace or copy (B, C) loses them. Episodes are normal `spotify:episode:` URIs and survive all three strategies.
 
@@ -175,7 +175,7 @@ Language-neutral. Stage C maps each box to real modules once D1 is decided.
 7. Refresh token goes to Windows Credential Manager. Access token stays in memory only.
 8. On 401: refresh. On `400 invalid_grant`: delete the stored token and ask the user to sign in again.
 
-**Scopes (least privilege):** `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Confirm in Stage A that nothing else is needed.
+**Scopes (least privilege):** `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Confirm in Stage A that nothing else is needed. Update 2026-10-21 (P2-4): sign-in also asks for `user-read-private` so `GET /me` can give the display name for the menu.
 
 ### 3.2 Shuffle flow
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import sys
+import threading
 from collections.abc import Iterable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path, PurePath
@@ -94,13 +95,17 @@ class RedactingFilter(logging.Filter):
 
     def __init__(self, secrets: Iterable[str] = (), home: PurePath | None = None) -> None:
         super().__init__()
-        self._secrets = {value for value in secrets if value}
+        # Worker threads add secrets while other threads log, so the set is never changed in
+        # place: add_secret swaps in a new frozenset, and filter() reads one whole set.
+        self._secrets: frozenset[str] = frozenset(value for value in secrets if value)
+        self._adding = threading.Lock()
         self._home: PurePath = home or Path.home()
 
     def add_secret(self, value: str) -> None:
-        """Also mask this exact value from now on."""
+        """Also mask this exact value from now on. Safe from any thread."""
         if value:
-            self._secrets.add(value)
+            with self._adding:
+                self._secrets = self._secrets | {value}
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
@@ -109,14 +114,15 @@ class RedactingFilter(logging.Filter):
             # A bad format call must not turn a log line into a crash. The arguments are left
             # out, because a secret among them would have no field name to be caught by.
             message = f"{record.msg} [log arguments did not fit the message]"
-        record.msg = redact(message, self._secrets, self._home)
+        secrets = self._secrets
+        record.msg = redact(message, secrets, self._home)
         record.args = None
         if record.exc_info and not record.exc_text:
             record.exc_text = logging.Formatter().formatException(record.exc_info)
         if record.exc_text:
-            record.exc_text = redact(record.exc_text, self._secrets, self._home)
+            record.exc_text = redact(record.exc_text, secrets, self._home)
         if record.stack_info:
-            record.stack_info = redact(record.stack_info, self._secrets, self._home)
+            record.stack_info = redact(record.stack_info, secrets, self._home)
         return True
 
 

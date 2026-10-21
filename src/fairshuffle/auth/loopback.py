@@ -268,9 +268,11 @@ class LoopbackListener:
             self._server = _CallbackServer(target.port, self)
         except OSError as error:
             raise PortInUse(
-                f"Port {target.port} on 127.0.0.1 is in use by another program, so sign-in "
-                "can't listen for Spotify's reply. Close that program or pick another port in "
-                "both .env and the Spotify dashboard."
+                f"Port {target.port} on 127.0.0.1 is in use, so sign-in can't listen for "
+                "Spotify's reply. If you just tried to sign in, wait a minute and try again "
+                "(Windows holds the port briefly after each try). Otherwise another program "
+                "has it: close that program or pick another port in both .env and the Spotify "
+                "dashboard."
             ) from error
         self._server.timeout = POLL_SECONDS
         log.info("Sign-in listener ready on 127.0.0.1 port %d", self.port)
