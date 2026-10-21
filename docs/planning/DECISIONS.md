@@ -74,6 +74,7 @@ Claude fills this in after each answer.
 | P2-6 | Release v0.2.0 | Prep, then tag and release: PR #84 set the version to 0.2.0, then on Derek's typed go-ahead his PC tagged v0.2.0 on 960b168 and published the release; one pull request then marks Phase 2 complete | 2026-10-21 | M2's goal (sign in and sign out securely) was met and checked on Derek's PC, and a tag per milestone is how the roadmap tracks progress, as with v0.1.0. |
 | P2-7 | What's next after v0.2.0 | Close M2, then Phase 3: the M2 milestone closed from Derek's PC and Phase 3 (M3, v0.3.0) started in its own thread | 2026-10-21 | M2 was released and checked; listing playlists is the next roadmap step and is read-only, so nothing can be damaged. |
 | P3-1 | Feature branch pushes in M3 | Push freely: Claude pushes M3 feature branches and opens their PRs without asking each time; tags, releases, repo settings and deletions are still asked one at a time | 2026-10-21 | Same as P2-1: the protected `main`, the PR checks and the security review are the real gate, and work keeps moving while Derek is away. |
+| P3-2 | Release v0.3.0 | Tag and release: PR #93 set the version to 0.3.0, Derek checked the picker with his real playlists on his PC, then on his typed go-ahead his PC tagged v0.3.0 on 84d60c3 and published the release (602 tests passed there); one pull request then marks Phase 3 complete | 2026-10-21 | M3's goal (see your playlists) was met and checked on Derek's PC, and a tag per milestone is how the roadmap tracks progress, as with v0.1.0 and v0.2.0. |
 
 ---
 
