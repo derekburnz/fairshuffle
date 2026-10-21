@@ -23,6 +23,7 @@ from fairshuffle.auth.loopback import (
 )
 from fairshuffle.auth.oauth import SpotifyAuth, authorize_url
 from fairshuffle.auth.pkce import PkceRequest
+from fairshuffle.auth.token_store import delete_refresh_token
 from fairshuffle.config import SpotifySettings
 
 
@@ -61,10 +62,19 @@ class BrowserSignIn:
                     "Windows couldn't open your web browser for the Spotify sign-in page."
                 )
             code = listener.wait(self._timeout)
-        with self._lock:  # a Cancel that came just after the callback still counts
+        self._stop_if_cancelled()  # a Cancel that came just after the callback still counts
+        auth = SpotifyAuth.from_code(self._http, self._settings, code, request.verifier)
+        try:
+            self._stop_if_cancelled()  # a Cancel during the exchange undoes the saved sign-in
+        except ListenerCancelled:
+            delete_refresh_token()
+            raise
+        return auth
+
+    def _stop_if_cancelled(self) -> None:
+        with self._lock:
             if self._cancelled:
                 raise ListenerCancelled("Sign-in was cancelled.")
-        return SpotifyAuth.from_code(self._http, self._settings, code, request.verifier)
 
     def cancel(self) -> None:
         """Stop waiting for the browser. Safe from any thread, before or during run()."""

@@ -7,6 +7,7 @@ It uses http.client, which responses doesn't intercept, so it really reaches the
 
 from __future__ import annotations
 
+import json
 import socket
 import threading
 from collections.abc import Iterator
@@ -193,4 +194,25 @@ def test_a_cancel_just_after_the_callback_still_stops_the_exchange(
     browser.join()
 
     assert len(spotify.calls) == 0  # no tokens were asked for, so none were saved
+    assert keyring.get_password("FairShuffle", "spotify-refresh-token") is None
+
+
+def test_a_cancel_during_the_exchange_forgets_the_new_sign_in(
+    spotify: responses.RequestsMock, http: requests.Session, settings: SpotifySettings
+) -> None:
+    attempt: BrowserSignIn
+
+    def cancel_then_reply(_request: requests.PreparedRequest) -> tuple[int, dict[str, str], str]:
+        attempt.cancel()  # the user picks Cancel while the code is being swapped for tokens
+        return 200, {}, json.dumps(TOKEN_REPLY)
+
+    spotify.add_callback(responses.POST, TOKEN_URL, callback=cancel_then_reply)
+    browser = FakeBrowser()
+    attempt = BrowserSignIn(http, settings, browser, timeout=5)
+
+    with pytest.raises(ListenerCancelled):
+        attempt.run()
+    browser.join()
+
+    assert len(spotify.calls) == 1
     assert keyring.get_password("FairShuffle", "spotify-refresh-token") is None

@@ -69,7 +69,7 @@ def test_a_proxy_on_this_pc_cannot_carry_a_request_out(monkeypatch: pytest.Monke
 @pytest.mark.filterwarnings("ignore:A test tried to use socket:UserWarning")
 def test_no_test_can_look_up_a_real_host_name() -> None:
     with pytest.raises(SocketBlockedError):
-        socket.getaddrinfo("api.spotify.com", 443)
+        socket.getaddrinfo("api.spotify.invalid", 443)  # reserved, never a real host
 
 
 def test_this_pc_can_still_be_looked_up() -> None:
@@ -80,4 +80,4 @@ def test_this_pc_can_still_be_looked_up() -> None:
 def test_a_stray_real_request_fails_loudly() -> None:
     """requests doesn't catch the block, so a call nobody faked can't pass as a network error."""
     with pytest.raises(SocketBlockedError):
-        requests.get("https://api.spotify.com/v1/me", timeout=1)
+        requests.get("https://api.spotify.invalid/v1/me", timeout=1)
