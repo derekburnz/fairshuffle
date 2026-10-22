@@ -118,16 +118,17 @@ def test_the_output_names_no_songs(fake: FakeSpotify, client: SpotifyClient) -> 
     assert not any("spotify:" in line or "fakelist" in line for line in lines)
 
 
-def test_keep_order_runs_check_the_snapshot_between_moves(
+def test_it_passes_when_snapshot_ids_are_named_apart_as_live(
     fake: FakeSpotify, client: SpotifyClient
 ) -> None:
-    fake.add_playlist("fakelist", songs(30))
+    """The first live run (#31) stopped at run 6 on this; the songs check doesn't."""
+    fake.add_playlist("fakelist", songs(60))
+    fake.replies_name_versions_apart = True
+    lines: list[str] = []
 
-    script.live_test(client, PlaylistItemsCache(), "fakelist", lambda _: None, pace=0)
+    passed = script.live_test(client, PlaylistItemsCache(), "fakelist", lines.append, pace=0)
 
-    snapshot_reads = [c for c in fake.calls if c.method == "GET" and c.path.endswith("fakelist")]
-    # Each run reads it twice around the item read; keep-order runs also every 10 moves.
-    assert len(snapshot_reads) > 2 * 11
+    assert passed, lines
 
 
 def test_it_stops_at_the_first_failure(fake: FakeSpotify, client: SpotifyClient) -> None:

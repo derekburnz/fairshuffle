@@ -7,8 +7,8 @@ is fixed here on purpose; there is no option to point it anywhere else.
 Without --run it only finds the playlist and says how many songs it holds. Nothing is written.
 With --run it does 5 fast shuffles, then 5 keep-order shuffles, then one Undo. Each step reads
 the playlist back and checks it holds the same songs as at the start, in a new order. Keep-order
-runs read the snapshot_id every 10 moves, so the check that spots another editor runs against
-the real API too (Rule 4: Spotify doesn't say the two snapshot_ids match in format).
+runs read the playlist back every 10 moves, so the check that spots another editor runs
+against the real API too (P4-6; the first live run showed snapshot_ids can't be used for it).
 
 If a run fails after it may have changed the playlist, the script puts the order from before
 that run back at once (keep-order Undo, or fast Undo if songs went missing) and says whether that
@@ -65,7 +65,7 @@ TEST_PLAYLIST = "Shuffle Test"
 MAX_SONGS = 100  # one fast write is all or nothing up to 100 songs, so a run can't leave it short
 FAST_RUNS = 5
 KEEP_ORDER_RUNS = 5
-CHECK_EVERY = 10  # small, so a 30-song keep-order run reads the snapshot_id twice
+CHECK_EVERY = 10  # small, so even a 30-song keep-order run checks the songs twice
 
 Out = Callable[[str], None]
 
