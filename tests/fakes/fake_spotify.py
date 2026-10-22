@@ -19,10 +19,12 @@ before or after the change is applied), run code before a request with before_re
 editor changing the playlist mid-shuffle), and read back every call from calls.
 
 Where the docs are silent, the fake says what it does. A reorder with a stale snapshot_id is
-applied, because nothing documents a refusal, so shuffle code must compare snapshot_ids itself
-rather than count on Spotify; reject_stale_snapshot=True makes it refuse instead (400), so tests
-can cover both. uris on the query string is refused (the app sends them in the body), and an
-empty uris list clears the playlist. Every call must carry a Bearer token, or it gets 401; the
+applied, because nothing documents a refusal, so shuffle code must check for other editors
+itself rather than count on Spotify; reject_stale_snapshot=True makes it refuse instead (400),
+so tests can cover both. replies_name_versions_apart=True copies what the real API did in the
+live test (#31): a write's reply carries a snapshot_id GET /playlists/{id} never returns.
+uris on the query string is refused (the app sends them in the body), and an empty uris list
+clears the playlist. Every call must carry a Bearer token, or it gets 401; the
 fake doesn't serve the token endpoint, so a test of the refresh-on-401 path needs its own mock.
 """
 
@@ -110,6 +112,9 @@ class FakeSpotify:
     faults: list[Fault] = field(default_factory=list)
     before_request: Callable[[Call], None] | None = None
     reject_stale_snapshot: bool = False
+    # As the real API did in the live test (#31): a write's reply names the new version with a
+    # snapshot_id that GET /playlists/{id} never returns. Both still change with every edit.
+    replies_name_versions_apart: bool = False
     _clock: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
     def __post_init__(self) -> None:
@@ -280,14 +285,20 @@ class FakeSpotify:
         assert isinstance(start, int) and isinstance(before, int) and isinstance(length, int)
         if not (0 <= start < size and 0 <= before <= size and 1 <= length <= size - start):
             return _error(400, "Range out of bounds")
-        if self.reject_stale_snapshot and body.get("snapshot_id") != playlist.snapshot_id:
+        named = {playlist.snapshot_id, self._reply_snapshot(playlist)}
+        if self.reject_stale_snapshot and body.get("snapshot_id") not in named:
             return _error(400, "Stale snapshot_id")
         playlist.entries = reordered(playlist.entries, start, before, length)
         return self._changed(playlist, 200)
 
     def _changed(self, playlist: FakePlaylist, status: int) -> Reply:
         playlist.version += 1
-        return _ok(status, {"snapshot_id": playlist.snapshot_id})
+        return _ok(status, {"snapshot_id": self._reply_snapshot(playlist)})
+
+    def _reply_snapshot(self, playlist: FakePlaylist) -> str:
+        if self.replies_name_versions_apart:
+            return f"fake-reply-snapshot-{playlist.id}-{playlist.version}"
+        return playlist.snapshot_id
 
     def _stamp(self) -> str:
         """A distinct added_at for each write, so tests can see which entries were rewritten."""

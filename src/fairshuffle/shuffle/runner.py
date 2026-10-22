@@ -12,9 +12,11 @@ A shuffle goes:
 4. Send the writes, pacing them and reporting progress. Retry-After waits happen inside
    SpotifyClient. In keep-order mode each move carries the latest snapshot_id, cancel is honoured
    between moves (every song is still there, just partly shuffled), and every CHECK_EVERY moves
-   the snapshot_id is read to catch another editor. That catches an edit made between two of
-   our moves; one that lands together with a move is already in that move's reply, so only
-   the read-back in step 5 can see it. Fast mode is a handful of calls and can't
+   the playlist is read and compared with the order our moves should have made, to catch
+   another editor (P4-6). The snapshot_id isn't used for that: on the real API the one GET
+   /playlists/{id} returns never matched the one the last reorder returned (live test, #31).
+   An edit made after the last check is caught by the read-back in step 5. Fast mode is a
+   handful of calls and can't
    stop halfway without leaving the playlist short, so cancel only works before its first write.
 5. Read the playlist back and verify it holds the same songs in the planned order.
 
@@ -66,7 +68,7 @@ from fairshuffle.spotify.playlists import read_playlist_items
 from fairshuffle.storage import backups
 from fairshuffle.storage.backups import BackupError
 
-CHECK_EVERY = 50  # keep-order mode reads the snapshot_id after this many moves
+CHECK_EVERY = 50  # keep-order mode reads the playlist back after this many moves
 PACE_SECONDS = 0.05  # at most 20 writes a second; Spotify publishes no limit, so stay gentle
 _SNAPSHOT = re.compile(r"[\x21-\x7e]{1,256}")  # as spotify/playlists.py
 
@@ -235,11 +237,13 @@ def _write(
     else:
         plan = reorder_plan(order)
         expected = [items[k].uri for k in order]
+    now = [item.uri for item in items]  # keep-order: the order our moves have made so far
     landed = 0  # writes Spotify confirmed
     try:
         for write in plan:
             if isinstance(write, Move):
-                snapshot = _move(client, playlist_id, path, write, snapshot, landed, options)
+                snapshot = _move(client, playlist_id, path, write, snapshot, now, landed, options)
+                now.insert(write.insert_before, now.pop(write.range_start))
             else:
                 _paced(options)
                 if isinstance(write, Replace):
@@ -289,14 +293,17 @@ def _move(
     path: str,
     move: Move,
     snapshot: str,
+    now: Sequence[str | None],
     landed: int,
     options: Options,
 ) -> str:
-    """Send one reorder and return the new snapshot_id."""
+    """Send one reorder and return the new snapshot_id. now is the order before this move."""
     if options.cancel is not None and options.cancel.is_set():
         raise _Stop(Outcome(Result.CANCELLED, changed=landed > 0, message=_cancelled(landed)))
-    if landed and landed % options.check_every == 0 and _snapshot(client, playlist_id) != snapshot:
-        raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, changed=True, message=CHANGED_ELSEWHERE))
+    if landed and landed % options.check_every == 0:
+        found = [item.uri for item in read_playlist_items(client, playlist_id)]
+        if found != list(now):
+            raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, changed=True, message=CHANGED_ELSEWHERE))
     _paced(options)
     reply = client.put(
         path,
