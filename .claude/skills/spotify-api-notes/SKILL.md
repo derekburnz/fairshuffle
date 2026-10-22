@@ -56,6 +56,7 @@ Response shape change: playlist objects use `items` where they used to use `trac
 - Since July 2026, quota overruns return 429 with a JSON body containing `"reason": "QUOTA_EXCEEDED"` (the Regular Error Object's optional `reason` field). Now also on the Quota modes and API calls pages.
 - Numeric limits are not published. Pace requests, count them and back off.
 - Use `snapshot_id` to avoid refetching unchanged playlists.
+- Seen live on 2026-10-22 (#31, Derek's "Shuffle Test" playlist): after a run of reorders, the `snapshot_id` from `GET /playlists/{id}` did not equal the one the last reorder's reply returned, though nobody else edited the playlist. Two `GET`s with no write between them did match. So never compare a write reply's `snapshot_id` with a `GET`'s to detect other editors; compare the songs instead (P4-6). Still send the latest reply's `snapshot_id` with each reorder.
 - The rate limits page still recommends batch endpoints such as "Get Multiple Albums", which were removed in Feb 2026, so that page is stale.
 
 ## Known limits

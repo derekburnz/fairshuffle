@@ -51,7 +51,7 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "S"]
 "tests/**" = ["S101", "S105", "S106"]  # asserts and obviously fake test credentials
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
 pythonVersion = "3.14"
 typeCheckingMode = "standard"
 
