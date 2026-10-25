@@ -126,6 +126,8 @@ uv run --group build python scripts/build_exe.py --zip   # also dist\FairShuffle
 
 The build reads `packaging/fairshuffle.spec`, takes about a minute and starts from a clean folder each time. To run the built app, copy your `.env` into `dist\FairShuffle` next to `FairShuffle.exe` (P5-4); each build clears the folder, so copy it again after rebuilding. The folder and the zip never contain your `.env`: the build stops if it finds one. Keep the folder somewhere only you can write to, such as under your user profile, because anyone who can change that `.env` can point the app at another Spotify app. The .exe isn't code signed yet (D16), so Smart App Control or SmartScreen may block it.
 
+CI builds the same folder on Windows (`.github/workflows/prerelease.yml`) whenever a pull request touches the build, and smoke tests the .exe. When a `v*` tag is pushed (Derek's call), it checks the tag matches the app version, then publishes the zip and its SHA-256 checksum as a GitHub pre-release, or adds them to a release already written for that tag.
+
 ## How this project is run
 
 FairShuffle is a solo portfolio project run like a team project:
