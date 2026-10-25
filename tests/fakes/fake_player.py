@@ -72,6 +72,7 @@ class FakePlayer:
     context_uri: str | None = None
     order: list[str] = field(default_factory=list)  # what plays, in the order it plays
     position: int = 0
+    progress_ms: int = 0
     calls: list[PlayerCall] = field(default_factory=list)
     _pending_shuffle: bool | None = None
 
@@ -189,11 +190,14 @@ class FakePlayer:
         if self.shuffle:  # Spotify's own shuffle: anything but the order asked for
             tracks = list(reversed(tracks))
         self.order, self.position = tracks, start
+        position_ms = body.get("position_ms", 0)
+        self.progress_ms = position_ms if isinstance(position_ms, int) else 0
         self.is_playing = self.current is not None
         return _done()
 
     def _skip(self, step: int) -> None:
         self.position = max(0, self.position + step)
+        self.progress_ms = 0
         if self.current is None:  # past the end with repeat off: playback stops
             self.is_playing = False
             self.position = len(self.order)
@@ -223,7 +227,7 @@ class FakePlayer:
                 "context": context,
                 "item": item,
                 "is_playing": self.is_playing,
-                "progress_ms": 0 if item else None,
+                "progress_ms": self.progress_ms if item else None,
                 "currently_playing_type": "track" if item else "unknown",
             },
         )
