@@ -1,8 +1,9 @@
 """The user's FairShuffle settings, kept between runs in %APPDATA%\\FairShuffle\\settings.json.
 
-For now it holds one choice: whether shuffles keep each song's "date added" (keep-order mode,
-P4-4). A missing or damaged file gives the defaults, and a file that can't be saved only means
-the choice is forgotten at the next start, so neither ever stops the app.
+It holds whether shuffles keep each song's "date added" (keep-order mode, P4-4) and the ID of
+the private playlist the true shuffle player plays from (M6). A missing or damaged file gives
+the defaults, and a file that can't be saved only means the choice is forgotten at the next
+start, so neither ever stops the app.
 """
 
 from __future__ import annotations
@@ -10,14 +11,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from fairshuffle.storage.paths import settings_file
 
 MAX_FILE_BYTES = 100_000  # a few bytes in practice; anything bigger isn't ours
+_ID = re.compile(r"[0-9A-Za-z]{1,64}")  # a Spotify playlist ID
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +28,7 @@ log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class Settings:
     keep_date_added: bool = False  # fast mode is the default (D12)
+    true_shuffle_playlist: str | None = None  # made by the player on first use (P6-04)
 
 
 def load() -> Settings:
@@ -43,15 +47,33 @@ def load() -> Settings:
         log.warning("The settings file couldn't be read; using the defaults")
         return Settings()
     keep = data.get("keep_date_added", False)
-    return Settings(keep_date_added=keep if isinstance(keep, bool) else False)
+    playlist = data.get("true_shuffle_playlist")
+    return Settings(
+        keep_date_added=keep if isinstance(keep, bool) else False,
+        true_shuffle_playlist=playlist
+        if isinstance(playlist, str) and _ID.fullmatch(playlist)
+        else None,
+    )
+
+
+def update(**changes: Any) -> Settings:
+    """Change some settings and keep the rest as saved, so the shuffle controller and the player
+    never write over each other's choices. Returns the new settings, saved or not."""
+    new = replace(load(), **changes)
+    save(new)
+    return new
 
 
 def save(settings: Settings) -> bool:
     """Save the settings. Returns False (and logs) when they couldn't be written."""
     path = settings_file()
+    data = {
+        "keep_date_added": settings.keep_date_added,
+        "true_shuffle_playlist": settings.true_shuffle_playlist,
+    }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _write_atomically(path, json.dumps({"keep_date_added": settings.keep_date_added}))
+        _write_atomically(path, json.dumps(data))
     except OSError:
         log.warning("Saving the settings failed")
         return False

@@ -8,7 +8,8 @@ unchanged; only the far end of the wire is fake. It serves:
 - GET /playlists/{id}/items: pages of at most 50, with a next link while more follow;
 - PUT /playlists/{id}/items: reorder (range_start, insert_before, range_length, snapshot_id) or
   replace (uris, at most 100), never both in one request; 200 with the new snapshot_id;
-- POST /playlists/{id}/items: add up to 100 uris at an optional position; 201 with snapshot_id.
+- POST /playlists/{id}/items: add up to 100 uris at an optional position; 201 with snapshot_id;
+- POST /me/playlists: a new empty playlist owned by the user (name required); 201 with its id.
 
 Every change gives the playlist a new snapshot_id. Reorder keeps each entry's added_at; replace
 and add stamp a new one, which is how tests tell the two strategies apart. Local files can be
@@ -47,6 +48,7 @@ PAGE_SIZE = 50  # GET /playlists/{id}/items gives at most 50 per page
 MAX_URIS = 100  # replace and add take at most 100 URIs per request
 
 _PLAYLIST = re.compile(re.escape(API_BASE) + r"/playlists/(?P<id>[^/?]+)(?P<items>/items)?")
+_CREATE = re.compile(re.escape(API_BASE) + r"/me/playlists")
 _REORDER_FIELDS = ("range_start", "insert_before", "range_length")
 
 Reply = tuple[int, dict[str, str], str]
@@ -74,6 +76,7 @@ class FakePlaylist:
     editable: bool = True  # False: owned by someone else, so every call answers 403
     version: int = 1
     stale_reads: int = 0  # GET /playlists/{id} reads still to answer with the old snapshot_id
+    public: object = True  # as POST /me/playlists set it
 
     @property
     def snapshot_id(self) -> str:
@@ -121,9 +124,12 @@ class FakeSpotify:
     lagging_snapshot_reads: int = 0
     _clock: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
+    created: list[FakePlaylist] = field(default_factory=list)  # made through POST /me/playlists
+
     def __post_init__(self) -> None:
         for method in ("GET", "PUT", "POST"):
             self.mock.add_callback(method, _PLAYLIST, callback=self._answer)
+        self.mock.add_callback("POST", _CREATE, callback=self._create)
 
     # Setting up -----------------------------------------------------------------------------
 
@@ -193,6 +199,19 @@ class FakeSpotify:
         if fault is not None:  # nothing was applied, so the fault waits for the next request
             self.faults.insert(0, fault)
         return reply
+
+    def _create(self, request: requests.PreparedRequest) -> Reply:
+        url = urlsplit(request.url or "")
+        body = _body(request)
+        self.calls.append(Call("POST", url.path, parse_qs(url.query), body))
+        if not str(request.headers.get("Authorization", "")).startswith("Bearer "):
+            return _error(401, "No token provided")
+        if not body or not isinstance(body.get("name"), str):
+            return _error(400, "name is required")
+        playlist = self.add_playlist(f"fakecreated{len(self.created) + 1}", [])
+        playlist.public = body.get("public", True)
+        self.created.append(playlist)
+        return _ok(201, {"id": playlist.id, "uri": f"spotify:playlist:{playlist.id}"})
 
     def _take_fault(self, method: str) -> Fault | None:
         for index, fault in enumerate(self.faults):

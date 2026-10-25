@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -66,3 +67,28 @@ def test_deeply_nested_json_gives_the_defaults() -> None:
     settings_file().write_text("[" * 99_000, encoding="utf-8")
 
     assert settings.load() == Settings()
+
+
+def test_the_true_shuffle_playlist_is_remembered() -> None:
+    assert settings.save(Settings(true_shuffle_playlist="fakeplaylist9"))
+
+    assert settings.load().true_shuffle_playlist == "fakeplaylist9"
+
+
+@pytest.mark.parametrize("value", [1, "", "../etc", "fake playlist", "x" * 65])
+def test_a_bad_true_shuffle_playlist_id_is_dropped(value: object) -> None:
+    settings_file().parent.mkdir(parents=True)
+    data = {"keep_date_added": True, "true_shuffle_playlist": value}
+    settings_file().write_text(json.dumps(data), encoding="utf-8")
+
+    assert settings.load() == Settings(keep_date_added=True)
+
+
+def test_update_keeps_the_other_choices() -> None:
+    settings.save(Settings(keep_date_added=True))
+
+    new = settings.update(true_shuffle_playlist="fakeplaylist9")
+
+    assert new == Settings(keep_date_added=True, true_shuffle_playlist="fakeplaylist9")
+    assert settings.load() == new
+    assert settings.update(keep_date_added=False).true_shuffle_playlist == "fakeplaylist9"
