@@ -21,7 +21,12 @@ from fairshuffle.shuffle import session as true_shuffle
 from fairshuffle.shuffle.engine import shuffled
 from fairshuffle.spotify import player
 from fairshuffle.spotify.client import SpotifyClient, new_session
-from fairshuffle.spotify.errors import NoActiveDevice, PremiumRequired, SpotifyError
+from fairshuffle.spotify.errors import (
+    DeviceRestricted,
+    NoActiveDevice,
+    PremiumRequired,
+    SpotifyError,
+)
 
 SEED = 7
 SOURCE = "spotify:playlist:fakeplaylist1"
@@ -252,6 +257,28 @@ def test_with_no_spotify_app_open_nothing_changes(
     app.devices[0].is_active = False
 
     with pytest.raises(NoActiveDevice):
+        start(client)
+
+    assert app.commands() == []
+
+
+def test_a_device_that_takes_no_commands_is_told_before_anything_changes(
+    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    app.devices[0].is_restricted = True
+
+    with pytest.raises(DeviceRestricted):
+        start(client)
+
+    assert app.commands() == []
+
+
+def test_spotify_open_with_nothing_playing_asks_for_a_playlist(
+    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    app.context_uri, app.order, app.is_playing = None, [], False
+
+    with pytest.raises(true_shuffle.NothingToPlay, match="Play one of your playlists"):
         start(client)
 
     assert app.commands() == []
