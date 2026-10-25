@@ -10,13 +10,24 @@ from fakes.ui_fakes import FakeAccount, HeldJobs
 from PySide6.QtWidgets import QApplication
 
 from fairshuffle.shuffle import session as true_shuffle
-from fairshuffle.spotify.errors import NoActiveDevice, SpotifyError
+from fairshuffle.spotify import player
+from fairshuffle.spotify.errors import (
+    DeviceRestricted,
+    NoActiveDevice,
+    PlayerRefused,
+    PremiumRequired,
+    RateLimited,
+    SignInRequired,
+    SpotifyError,
+)
 from fairshuffle.ui import true_shuffle as toggle_module
 from fairshuffle.ui.account import UNEXPECTED, AccountState, AccountStatus
 from fairshuffle.ui.tray import TRUE_SHUFFLE, TrayIcon
 from fairshuffle.ui.true_shuffle import (
     NEEDS_PLAYBACK_SIGN_IN,
     NOT_SIGNED_IN,
+    START_FAILED,
+    STOP_FAILED,
     ToggleState,
     ToggleStatus,
     TrueShuffleController,
@@ -134,7 +145,9 @@ def test_a_start_spotify_refuses_says_why_and_stays_off(
     toggle.toggle(True)
     jobs.release()
 
-    assert seen[-1] == ToggleStatus(ToggleState.OFF, "Open the Spotify app first.", warning=True)
+    assert seen[-1] == ToggleStatus(
+        ToggleState.OFF, "Open the Spotify app first.", START_FAILED, warning=True
+    )
     assert not toggle.watch_timer.isActive()
 
 
@@ -146,7 +159,58 @@ def test_a_bug_of_ours_shows_a_fixed_message(
     toggle.toggle(True)
     jobs.release()
 
-    assert seen[-1] == ToggleStatus(ToggleState.OFF, UNEXPECTED, warning=True)
+    assert seen[-1] == ToggleStatus(ToggleState.OFF, UNEXPECTED, START_FAILED, warning=True)
+
+
+# The player states (#115): each refusal from Spotify reaches the user as its own message.
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [
+        (NoActiveDevice(player.NO_DEVICE), player.NO_DEVICE),
+        (PremiumRequired(player.PREMIUM), player.PREMIUM),
+        (DeviceRestricted(player.RESTRICTED), player.RESTRICTED),
+        (true_shuffle.NothingToPlay(true_shuffle.NOT_A_PLAYLIST), true_shuffle.NOT_A_PLAYLIST),
+        (true_shuffle.NothingToPlay(true_shuffle.NOT_YOURS), true_shuffle.NOT_YOURS),
+        (true_shuffle.NothingToPlay(true_shuffle.ONLY_LOCAL), true_shuffle.ONLY_LOCAL),
+        (
+            PlayerRefused("Spotify refused that playback command."),
+            "Spotify refused that playback command.",
+        ),
+        (RateLimited("Spotify asked FairShuffle to slow down.", 30.0, False), "Spotify asked"),
+        (SignInRequired("expired"), "Spotify needs you to sign in again."),
+    ],
+    ids=[
+        "no-spotify-app",
+        "not-premium",
+        "restricted-device",
+        "nothing-playing",
+        "someone-elses-playlist",
+        "only-local-files",
+        "refused",
+        "rate-limited",
+        "signed-out-by-spotify",
+    ],
+)
+def test_each_player_state_has_its_own_message(
+    toggle: TrueShuffleController,
+    jobs: HeldJobs,
+    seen: list[ToggleStatus],
+    sessions: FakeSessions,
+    error: SpotifyError,
+    message: str,
+) -> None:
+    sessions.start_result = error
+
+    toggle.toggle(True)
+    jobs.release()
+
+    status = seen[-1]
+    assert status.state is ToggleState.OFF
+    assert status.message is not None and status.message.startswith(message)
+    assert status.title == START_FAILED
+    assert status.warning
 
 
 def test_a_failed_stop_says_why(
@@ -159,7 +223,9 @@ def test_a_failed_stop_says_why(
     toggle.toggle(False)
     jobs.release()
 
-    assert seen[-1] == ToggleStatus(ToggleState.OFF, "Couldn't reach Spotify.", warning=True)
+    assert seen[-1] == ToggleStatus(
+        ToggleState.OFF, "Couldn't reach Spotify.", STOP_FAILED, warning=True
+    )
 
 
 def test_signed_out_it_asks_to_sign_in(
@@ -169,7 +235,7 @@ def test_signed_out_it_asks_to_sign_in(
 
     toggle.toggle(True)
 
-    assert seen == [ToggleStatus(ToggleState.OFF, NOT_SIGNED_IN, warning=True)]
+    assert seen == [ToggleStatus(ToggleState.OFF, NOT_SIGNED_IN, START_FAILED, warning=True)]
     assert jobs.jobs == []
 
 
@@ -180,7 +246,9 @@ def test_an_old_sign_in_is_pointed_at_allow_playback_control(
 
     toggle.toggle(True)
 
-    assert seen == [ToggleStatus(ToggleState.OFF, NEEDS_PLAYBACK_SIGN_IN, warning=True)]
+    assert seen == [
+        ToggleStatus(ToggleState.OFF, NEEDS_PLAYBACK_SIGN_IN, START_FAILED, warning=True)
+    ]
     assert jobs.jobs == []
 
 
