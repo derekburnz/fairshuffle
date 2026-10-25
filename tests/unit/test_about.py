@@ -17,6 +17,7 @@ def test_about_text_names_version_license_and_source() -> None:
     text = about_text()
 
     assert f"FairShuffle {__version__}" in text
+    assert "A true shuffle player for Spotify." in text  # the D27 tagline
     assert "MIT License" in text
     assert REPO_URL in text
 
