@@ -24,9 +24,9 @@ Claude fills this in after each answer.
 | D12 | Shuffle strategy | Fast replace by default, reorder as a setting (option D with the default reversed, in Derek's words): a shuffle rewrites the playlist in chunks of 100 (about 5 calls for 500 songs), and a setting switches to reorder in place, which keeps "date added", "added by" and local files and warns that it is slower | 2026-10-21 | Speed matters most day to day; the slower mode stays one setting away for playlists where the added dates matter. |
 | D13 | Backup and undo | A. Automatic backup plus one-click "Undo last shuffle": the order is saved to a local file before the first write and Undo writes it back | 2026-10-21 | The backup adds no Spotify calls (the app already reads every song to shuffle), so it costs no speed, and a fast rewrite cut off halfway needs a quick way back. |
 | D14 | Backlog features | pending (Phase 5) | | |
-| D15 | Distribution format | pending (Phase 8) | | |
-| D16 | Code signing | pending (Phase 8) | | |
-| D17 | Client ID in release builds | pending (Phase 8) | | |
+| D15 | Distribution format | pending (Phase 9) | | |
+| D16 | Code signing | pending (Phase 9) | | |
+| D17 | Client ID in release builds | pending (Phase 9) | | |
 | D18 | Python version | A. Python 3.14 | 2026-10-13 | Newest stable branch; every library we need supports it. |
 | D19 | Project and dependency manager | A. uv | 2026-10-13 | One tool installs Python, the venv and a lockfile; common choice for new Python projects. |
 | D20 | Code quality tools | A. ruff + pyright + pytest | 2026-10-13 | One type checker shared by Claude, the editor and CI. |
@@ -35,6 +35,9 @@ Claude fills this in after each answer.
 | D23 | Where auto-formatting runs | C. pre-commit framework (plus Claude hook from D7 and CI) | 2026-10-13 | Derek asked for whatever is closest to industry practice; most Python teams commit a .pre-commit-config.yaml. |
 | D24 | CI runners | B. Everything on Windows | 2026-10-13 | Focus on Windows for now. Secret scan stays on Ubuntu (gitleaks action only documented there). |
 | D25 | Build tool for the .exe | pending (Phase 5) | | |
+| D26 | Where the true shuffle player goes | A. A new phase after M5: M6 "True shuffle player" (v0.6.0). A player window lists your playlists and has a true shuffle toggle that turns Spotify's shuffle off and plays a Fisher-Yates order in your Spotify app without rewriting the playlist | 2026-10-25 | Features first, then a feature freeze for hardening and polish (the industry pattern), so both later phases cover the player and Phase 5 is unchanged. |
+| D27 | Rename now that FairShuffle is a player too | A. Keep FairShuffle; README and About gain the tagline "a true shuffle player for Spotify" when the player ships (P6-07) | 2026-10-25 | Spotify's Developer Terms (VII.1.3), Developer Policy (VI.2) and design guidelines rule out names with "Spotify" in them (Spotify Plus, Spotify+, TrueSpotify); FairShuffle still names what the toggle does and a rename would force a new sign-in for no gain. |
+| D28 | How the player phase shows on GitHub | A. Renumber: the player is M6 (v0.6.0), bug fixes and hardening become M7 (v0.7.x), visual polish M8 (v0.9.0) and the final project M9 (v1.0.0); three milestones renamed, the planning IDs in the open issues updated, the M6 milestone and its 8 issues created, and this docs branch pushed | 2026-10-25 | Milestone order matches release order, so the board, the roadmap and the versions stay in step. |
 | C-SIGN | Stage C roadmap sign-off | Approve (ROADMAP.md) | 2026-10-09 | Follows D1 to D8; locked with D18 to D24 on 2026-10-13. |
 | P0-1 | Phase 0 step 1: folder layout | Move and sync (package contents moved to the project root, docs synced) | 2026-10-13 | Standard repo layout keeps rules, README and config at the root. |
 | P0-2a | Install Git for Windows 2.55 | Just for you (winget, per-user scope) | 2026-10-13 | Same Git; no admin prompt needed, common on locked-down company laptops. |
@@ -301,7 +304,7 @@ Decided 2026-10-21: A. Derek asked for a backup only if it doesn't slow the shuf
 
 Pick from PROJECT_PLAN section 9 after you have used the prototype. Claude shows the list with effort estimates.
 
-### D15: Distribution format (Phase 8)
+### D15: Distribution format (Phase 9)
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -311,7 +314,7 @@ Pick from PROJECT_PLAN section 9 after you have used the prototype. Claude shows
 
 Recommendation: C if time allows, otherwise A.
 
-### D16: Code signing (Phase 8)
+### D16: Code signing (Phase 9)
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -321,7 +324,7 @@ Recommendation: C if time allows, otherwise A.
 
 Recommendation: A for a portfolio project.
 
-### D17: Client ID in release builds (Phase 8)
+### D17: Client ID in release builds (Phase 9)
 
 Why it matters: development mode apps allow only 5 users, all allowlisted by the owner.
 
@@ -331,6 +334,12 @@ Why it matters: development mode apps allow only 5 users, all allowlisted by the
 | B. Your Client ID built into the release | One-click for up to 4 friends you allowlist | Everyone else is blocked. Your ID is visible in the build (not a secret under PKCE, but it counts against your limits). |
 
 Recommendation: A, with B available as a private build for friends.
+
+## Feature planning cards (2026-10-25)
+
+Asked in the "Plan true shuffle playback feature" thread after v0.4.0. Derek asked for a Spotify-like view of his playlists with a "true shuffle" toggle that turns Spotify's shuffle off and plays songs in a fair random order without rewriting the playlist, and floated renaming the app to Spotify Plus, Spotify+ or TrueSpotify. The official docs were checked first (Rule 4): every Player endpoint is still available in development mode, play and shuffle need Premium for every user, and Spotify's terms forbid "Spotify" in an app name. Answers are in the log above; the plan is ROADMAP.md M6.
+
+Derek added two requirements on 2026-10-25, written into M6: each playlist shows its own Spotify cover picture, because pictures are easier to recognise than names (P6-05), and after turning the toggle on he can go back to the Spotify app and the playlist keeps playing there in the random order (P6-04).
 
 ---
 

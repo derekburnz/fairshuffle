@@ -55,7 +55,7 @@ Rules that apply everywhere are in `CLAUDE.md`. The short version: Derek decides
 - Survives: expired tokens, rate limiting, network drops, playlists edited during a shuffle.
 - Zero secrets in the Git history. CI green. README good enough for a recruiter to understand the project in 60 seconds.
 
-**Out of scope (unless Derek adds them from the backlog):** macOS or Linux builds, a public multi-user service, playback control, Liked Songs (not a playlist, cannot be reordered through the API).
+**Out of scope (unless Derek adds them from the backlog):** macOS or Linux builds, a public multi-user service, Liked Songs (not a playlist, cannot be reordered through the API). Update 2026-10-25 (D26): playback control is now in scope as the M6 true shuffle player in `ROADMAP.md`.
 
 ---
 
@@ -175,7 +175,7 @@ Language-neutral. Stage C maps each box to real modules once D1 is decided.
 7. Refresh token goes to Windows Credential Manager. Access token stays in memory only.
 8. On 401: refresh. On `400 invalid_grant`: delete the stored token and ask the user to sign in again.
 
-**Scopes (least privilege):** `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Confirm in Stage A that nothing else is needed. Update 2026-10-21 (P2-4): sign-in also asks for `user-read-private` so `GET /me` can give the display name for the menu.
+**Scopes (least privilege):** `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-private`, `playlist-modify-public`. Confirm in Stage A that nothing else is needed. Update 2026-10-21 (P2-4): sign-in also asks for `user-read-private` so `GET /me` can give the display name for the menu. Update 2026-10-25 (D26): the M6 player adds `user-read-playback-state` and `user-modify-playback-state` (P6-02).
 
 ### 3.2 Shuffle flow
 
