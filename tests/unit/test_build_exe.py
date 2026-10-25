@@ -35,6 +35,7 @@ def fake_build(module: ModuleType, extra: str | None = None) -> None:
     exe = "FairShuffle.exe" if sys.platform == "win32" else "FairShuffle"
     (folder / exe).write_bytes(b"MZ fake exe")
     if extra is not None:
+        (folder / extra).parent.mkdir(parents=True, exist_ok=True)
         (folder / extra).write_text("SPOTIFY_CLIENT_ID=fake-client-id-for-tests\n")
 
 
@@ -57,7 +58,9 @@ def test_zip_unpacks_as_one_fairshuffle_folder(build_exe: ModuleType) -> None:
     assert not any(name.endswith("/.env") for name in names)
 
 
-@pytest.mark.parametrize("where", [".env", "_internal/.env"])
+@pytest.mark.parametrize(
+    "where", [".env", "_internal/.env", ".env.local", ".env.bak", "my.env", "_internal/x/.env"]
+)
 def test_a_env_file_in_the_folder_stops_the_build(
     build_exe: ModuleType, where: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -98,3 +101,17 @@ def test_the_spec_builds_one_windowed_folder_without_upx() -> None:
     assert "console=False" in spec
     assert spec.count("upx=False") == 2  # on the EXE and on the COLLECT
     assert "COLLECT(" in spec  # one folder, not one file
+
+
+def test_package_metadata_with_a_local_path_stops_the_build(
+    build_exe: ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def build() -> None:
+        fake_build(build_exe)
+        info = build_exe.DIST / "FairShuffle" / "_internal" / "fairshuffle-0.4.0.dist-info"
+        info.mkdir()
+        (info / "direct_url.json").write_text('{"url": "file:///C:/Users/someone/project"}')
+
+    assert build_exe.main([], build=build) == 1
+
+    assert "local path" in capsys.readouterr().err

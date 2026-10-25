@@ -171,3 +171,14 @@ def test_the_built_app_takes_the_client_id_from_that_file(
     monkeypatch.setattr(sys, "executable", str(folder / "FairShuffle.exe"))
 
     assert load_settings(dev_env_file()).client_id == "fake-client-id-from-exe-folder"
+
+
+def test_the_built_app_says_where_its_env_goes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "FairShuffle.exe"))
+
+    with pytest.raises(ConfigError, match=r"a \.env file next to FairShuffle\.exe"):
+        load_settings(dev_env_file())
