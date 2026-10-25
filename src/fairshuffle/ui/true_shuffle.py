@@ -38,6 +38,8 @@ NEEDS_PLAYBACK_SIGN_IN = (
     'True Shuffle needs one more sign-in first: pick "Allow playback control" in the menu.'
 )
 NOT_SIGNED_IN = "Sign in to Spotify from the tray menu first."
+START_FAILED = "True Shuffle couldn't start"
+STOP_FAILED = "True Shuffle couldn't turn off"
 
 log = logging.getLogger(__name__)
 
@@ -103,10 +105,12 @@ class TrueShuffleController(QObject):
         client = self._account.client
         account = self._account.status
         if client is None or account.state is not AccountState.SIGNED_IN:
-            self._set(ToggleStatus(ToggleState.OFF, NOT_SIGNED_IN, warning=True))
+            self._set(ToggleStatus(ToggleState.OFF, NOT_SIGNED_IN, START_FAILED, warning=True))
             return
         if not account.playback:
-            self._set(ToggleStatus(ToggleState.OFF, NEEDS_PLAYBACK_SIGN_IN, warning=True))
+            self._set(
+                ToggleStatus(ToggleState.OFF, NEEDS_PLAYBACK_SIGN_IN, START_FAILED, warning=True)
+            )
             return
         self._begin(ToggleState.STARTING, lambda: _guarded(lambda: true_shuffle.start(client)))
 
@@ -130,13 +134,14 @@ class TrueShuffleController(QObject):
         if generation != self._generation:  # signed out or quit meanwhile; this is stale
             return
         if isinstance(result, _Failed):  # a failed stop leaves our order on; the toast says why
-            self._off(ToggleStatus(ToggleState.OFF, result.message, warning=True))
+            title = STOP_FAILED if state is ToggleState.STOPPING else START_FAILED
+            self._off(ToggleStatus(ToggleState.OFF, result.message, title, warning=True))
             return
         if state is ToggleState.STOPPING:
             self._off(ToggleStatus(ToggleState.OFF))
             return
         if not isinstance(result, true_shuffle.Session):  # the job itself crashed; pool logged it
-            self._off(ToggleStatus(ToggleState.OFF, UNEXPECTED, warning=True))
+            self._off(ToggleStatus(ToggleState.OFF, UNEXPECTED, START_FAILED, warning=True))
             return
         self._session = result
         self.watch_timer.start()
