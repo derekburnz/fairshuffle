@@ -59,7 +59,17 @@ def test_zip_unpacks_as_one_fairshuffle_folder(build_exe: ModuleType) -> None:
 
 
 @pytest.mark.parametrize(
-    "where", [".env", "_internal/.env", ".env.local", ".env.bak", "my.env", "_internal/x/.env"]
+    "where",
+    [
+        ".env",
+        "_internal/.env",
+        ".env.local",
+        ".env.bak",
+        "my.env",
+        "_internal/x/.env",
+        ".ENV",
+        "My.Env",
+    ],
 )
 def test_a_env_file_in_the_folder_stops_the_build(
     build_exe: ModuleType, where: str, capsys: pytest.CaptureFixture[str]

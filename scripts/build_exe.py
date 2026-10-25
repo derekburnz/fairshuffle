@@ -34,7 +34,7 @@ def forbidden(path: Path) -> str | None:
     """Why path must never ship, or None. A .env (or .env.local, my.env...) holds the developer's
     Client ID; an installed package's direct_url.json holds the project's absolute path, which
     on Windows includes the user name."""
-    name = path.name
+    name = path.name.lower()  # Windows file names ignore case: .ENV is .env
     if name != ALLOWED_ENV and (name.startswith(".env") or name.endswith(".env")):
         return "A .env file is in the build folder. Remove it; it must never ship."
     if name == "direct_url.json":
