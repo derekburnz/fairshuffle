@@ -45,7 +45,7 @@ def _menu_text(text: str) -> str:
 def placeholder_icon() -> QIcon:
     """Draw the placeholder icon: three white bars of uneven length on a blue tile.
 
-    It is drawn in code so there is no image file to package yet. Issue P7-01 replaces it with
+    It is drawn in code so there is no image file to package yet. Issue #43 replaces it with
     the real icon in light and dark variants.
     """
     pixmap = QPixmap(64, 64)
