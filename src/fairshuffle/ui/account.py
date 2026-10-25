@@ -18,7 +18,7 @@ import logging
 import threading
 import webbrowser
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from typing import Any
 
@@ -37,6 +37,13 @@ from fairshuffle.spotify.profile import display_name
 log = logging.getLogger(__name__)
 
 UNEXPECTED = "Something went wrong talking to Spotify. Try again, and check the log if it repeats."
+# Said once per start while the saved sign-in predates the player (P6-02). Shuffle and Undo keep
+# working; only the player needs the new scopes.
+PLAYBACK_SIGN_IN = (
+    "Sign in once more to let FairShuffle play a true shuffle in your Spotify app: pick "
+    '"Allow playback control" in the menu. Shuffle and Undo work as before.'
+)
+SIGN_IN_CANCELLED = "The sign-in was cancelled, so FairShuffle is signed out. Sign in to carry on."
 SHUTDOWN_WAIT_MS = 5000  # how long Quit waits for a Spotify task to wrap up
 
 
@@ -56,6 +63,7 @@ class AccountStatus:
     # Both can hold the display name, a personal detail, so neither shows in repr or a log line.
     name: str | None = field(default=None, repr=False)  # only when signed in and Spotify gave one
     message: str | None = field(default=None, repr=False)  # told to the user once, as a toast
+    playback: bool = True  # False while signed in without the player's scopes (P6-02)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +172,13 @@ class AccountController(QObject):
         http = self._session_factory()
         attempt = BrowserSignIn(http, settings, self._open_browser)
         self._sign_in = attempt
-        self._begin(AccountState.SIGNING_IN, lambda: self._finish_sign_in(attempt, http))
+        # Signed in already when the user allows playback control (P6-02). The old sign-in must
+        # stop before the new one is saved, or a refresh it makes later would save its own token
+        # over the new one, as sign_out() guards against too.
+        old = self._client
+        self._begin(
+            AccountState.SIGNING_IN, lambda: self._finish_sign_in(attempt, settings, http, old)
+        )
 
     def cancel_sign_in(self) -> None:
         if self._sign_in is not None:
@@ -234,14 +248,28 @@ class AccountController(QObject):
             return _Outcome(AccountStatus(AccountState.SIGNED_OUT))
         return self._signed_in(auth, http, notify=False)
 
-    def _finish_sign_in(self, attempt: BrowserSignIn, http: requests.Session) -> _Outcome:
-        return _closing(http, lambda: self._sign_in_with(attempt, http))
+    def _finish_sign_in(
+        self,
+        attempt: BrowserSignIn,
+        settings: SpotifySettings,
+        http: requests.Session,
+        old: SpotifyClient | None,
+    ) -> _Outcome:
+        return _closing(http, lambda: self._sign_in_with(attempt, settings, http, old))
 
-    def _sign_in_with(self, attempt: BrowserSignIn, http: requests.Session) -> _Outcome:
+    def _sign_in_with(
+        self,
+        attempt: BrowserSignIn,
+        settings: SpotifySettings,
+        http: requests.Session,
+        old: SpotifyClient | None,
+    ) -> _Outcome:
+        if old is not None:
+            old.end_sign_in()  # waits for a refresh in flight, so the store holds its token
         try:
             auth = attempt.run()
         except ListenerCancelled:
-            return _Outcome(AccountStatus(AccountState.SIGNED_OUT))
+            return self._back_to_saved(settings, http, None, was_signed_in=old is not None)
         except (
             CallbackError,
             BrowserNotOpened,
@@ -249,8 +277,28 @@ class AccountController(QObject):
             TokenError,
             TokenStoreError,
         ) as error:
-            return _Outcome(AccountStatus(AccountState.SIGNED_OUT, message=str(error)))
+            return self._back_to_saved(settings, http, str(error), was_signed_in=old is not None)
         return self._signed_in(auth, http, notify=True)
+
+    def _back_to_saved(
+        self,
+        settings: SpotifySettings,
+        http: requests.Session,
+        message: str | None,
+        was_signed_in: bool,
+    ) -> _Outcome:
+        """After a sign-in that didn't finish, pick the saved sign-in back up if there is one.
+
+        A browser sign-in only replaces the saved token once it succeeds, and the user may have
+        been signed in already, only asked for the playback scopes (P6-02). A Cancel during the
+        code exchange removes the new token, though, and then nothing is left to resume.
+        """
+        outcome = self._resume_with(settings, http)
+        if message is None and was_signed_in and outcome.status.state is AccountState.SIGNED_OUT:
+            message = SIGN_IN_CANCELLED
+        if message is None:
+            return outcome
+        return replace(outcome, status=replace(outcome.status, message=message))
 
     def _signed_in(self, auth: SpotifyAuth, http: requests.Session, notify: bool) -> _Outcome:
         client = SpotifyClient(auth, sleep=self._pause)
@@ -267,7 +315,12 @@ class AccountController(QObject):
             name = None  # signed in all the same; the name can wait for the next start
         if notify and message is None:
             message = f"Signed in as {name}." if name else "Signed in to Spotify."
-        status = AccountStatus(AccountState.SIGNED_IN, name=name, message=message)
+        playback = auth.can_control_playback
+        if not playback and message is None:
+            message = PLAYBACK_SIGN_IN
+        status = AccountStatus(
+            AccountState.SIGNED_IN, name=name, message=message, playback=playback
+        )
         return _Outcome(status, client, http)
 
     def _pause(self, seconds: float) -> None:

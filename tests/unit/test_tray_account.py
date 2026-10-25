@@ -147,6 +147,25 @@ def test_the_account_action_does_what_it_says(
     assert calls == [method]
 
 
+def test_a_sign_in_without_playback_control_offers_to_allow_it(
+    account: AccountController, tray: TrayIcon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(account, "sign_in", lambda: calls.append("sign_in"))
+    tray.show_account_status(AccountStatus(AccountState.SIGNED_IN, playback=False))
+
+    assert labels(tray)[:3] == [
+        "Signed in to Spotify",
+        "Sign &out",
+        "Allow &playback control…",
+    ]
+    tray.playback_action.trigger()
+    assert calls == ["sign_in"]
+
+    tray.show_account_status(AccountStatus(AccountState.SIGNED_IN))
+    assert not tray.playback_action.isVisible()
+
+
 def test_without_an_account_the_menu_is_as_before(qapp: QApplication) -> None:
     icon = TrayIcon(quit_app=lambda: None)
 

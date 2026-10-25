@@ -17,6 +17,8 @@ from fairshuffle.auth.oauth import SignInRequired, SpotifyAuth, Tokens
 from fairshuffle.config import ConfigError, SpotifySettings, load_settings
 from fairshuffle.ui import account as account_module
 from fairshuffle.ui.account import (
+    PLAYBACK_SIGN_IN,
+    SIGN_IN_CANCELLED,
     UNEXPECTED,
     AccountController,
     AccountState,
@@ -28,6 +30,8 @@ TOKEN_URL = "https://accounts.spotify.com/api/token"
 ME = "https://api.spotify.com/v1/me"
 FAKE_REFRESH = "fake-refresh-token-for-tests"
 TOKEN_REPLY = {"access_token": "fake-access-token-1", "token_type": "Bearer", "expires_in": 3600}
+OLD_SCOPES = "playlist-read-private playlist-modify-private user-read-private"  # before v0.6.0
+NEW_SCOPES = f"{OLD_SCOPES} user-read-playback-state user-modify-playback-state"
 
 
 class Runner:
@@ -52,6 +56,7 @@ class FakeSignIn:
     """Stands in for BrowserSignIn. Set `result` to an exception or to "ok"."""
 
     result: object = "ok"
+    refresh_token = FAKE_REFRESH
     created: list[FakeSignIn] = []
 
     def __init__(self, http: requests.Session, settings: SpotifySettings, _browser: object) -> None:
@@ -62,8 +67,8 @@ class FakeSignIn:
     def run(self) -> SpotifyAuth:
         if isinstance(FakeSignIn.result, BaseException):
             raise FakeSignIn.result
-        keyring.set_password("FairShuffle", "spotify-refresh-token", FAKE_REFRESH)
-        tokens = Tokens("fake-access-token-1", FAKE_REFRESH, 3600, frozenset())
+        keyring.set_password("FairShuffle", "spotify-refresh-token", FakeSignIn.refresh_token)
+        tokens = Tokens("fake-access-token-1", FakeSignIn.refresh_token, 3600, frozenset())
         return SpotifyAuth(self.http, self.settings, tokens)
 
     def cancel(self) -> None:
@@ -73,6 +78,7 @@ class FakeSignIn:
 @pytest.fixture(autouse=True)
 def fake_sign_in(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     FakeSignIn.result = "ok"
+    FakeSignIn.refresh_token = FAKE_REFRESH
     FakeSignIn.created = []
     monkeypatch.setattr(account_module, "BrowserSignIn", FakeSignIn)
     yield
@@ -135,6 +141,150 @@ def test_a_restart_resumes_the_saved_sign_in_without_a_browser(
     assert account.status == AccountStatus(AccountState.SIGNED_IN, name="Fake User")
     assert account.client is not None
     assert FakeSignIn.created == []
+
+
+def test_a_sign_in_saved_before_the_player_asks_once_for_playback_control(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+
+    account.start()
+
+    assert account.status.state is AccountState.SIGNED_IN
+    assert account.status.playback is False
+    assert account.status.message == PLAYBACK_SIGN_IN
+    assert account.client is not None  # shuffle and Undo still work
+    assert [status.message for status in seen].count(PLAYBACK_SIGN_IN) == 1
+
+
+def test_a_sign_in_with_the_playback_scopes_resumes_quietly(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": NEW_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+
+    account.start()
+
+    assert account.status == AccountStatus(AccountState.SIGNED_IN, name="Fake User")
+    assert account.status.playback is True
+
+
+def test_signing_in_again_for_playback_replaces_the_old_sign_in(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+
+    account.sign_in()  # FakeSignIn grants a sign-in with no scope list, taken on trust
+
+    assert account.status == AccountStatus(
+        AccountState.SIGNED_IN, name="Fake User", message="Signed in as Fake User."
+    )
+    assert account.status.playback is True
+
+
+def test_signing_in_again_ends_the_old_sign_in_before_saving_the_new_one(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+    old = account.client
+    assert old is not None
+    FakeSignIn.refresh_token = "fake-refresh-token-2"
+
+    account.sign_in()
+
+    with pytest.raises(SignInRequired):  # a worker still holding it can't refresh or save
+        old.get("/me")
+    assert stored() == "fake-refresh-token-2"
+
+
+def test_a_cancel_that_leaves_no_saved_sign_in_says_so(
+    spotify: responses.RequestsMock, seen: list[AccountStatus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+
+    def cancelled_during_the_exchange() -> SpotifyAuth:
+        keyring.delete_password("FairShuffle", "spotify-refresh-token")
+        raise ListenerCancelled("Sign-in was cancelled.")
+
+    monkeypatch.setattr(FakeSignIn, "run", lambda _self: cancelled_during_the_exchange())
+    account.sign_in()
+
+    assert account.status == AccountStatus(AccountState.SIGNED_OUT, message=SIGN_IN_CANCELLED)
+
+
+def test_a_failed_sign_in_for_playback_whose_saved_sign_in_expired_asks_again(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.post(TOKEN_URL, status=400, json={"error": "invalid_grant"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+    FakeSignIn.result = CallbackTimeout("The sign-in timed out.")
+
+    account.sign_in()
+
+    assert account.status.state is AccountState.SIGN_IN_AGAIN
+    assert account.status.message == "The sign-in timed out."
+
+
+def test_a_cancelled_sign_in_for_playback_keeps_the_saved_sign_in(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+    FakeSignIn.result = ListenerCancelled()
+
+    account.sign_in()
+
+    assert account.status.state is AccountState.SIGNED_IN
+    assert account.status.playback is False
+    assert account.client is not None
+    assert stored() == FAKE_REFRESH
+
+
+def test_a_failed_sign_in_for_playback_keeps_the_saved_sign_in_and_says_why(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+    FakeSignIn.result = CallbackTimeout("The sign-in timed out.")
+
+    account.sign_in()
+
+    assert account.status.state is AccountState.SIGNED_IN
+    assert account.status.message == "The sign-in timed out."
+    assert stored() == FAKE_REFRESH
 
 
 def test_an_expired_saved_sign_in_asks_to_sign_in_again(
