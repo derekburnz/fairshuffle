@@ -243,6 +243,8 @@ def _write(
         for write in plan:
             if isinstance(write, Move):
                 snapshot = _move(client, playlist_id, path, write, snapshot, now, landed, options)
+                # reorder_plan only moves entries up (insert_before < range_start), so this
+                # pop-then-insert is exactly what Spotify does with the move.
                 now.insert(write.insert_before, now.pop(write.range_start))
             else:
                 _paced(options)
@@ -301,6 +303,7 @@ def _move(
     if options.cancel is not None and options.cancel.is_set():
         raise _Stop(Outcome(Result.CANCELLED, changed=landed > 0, message=_cancelled(landed)))
     if landed and landed % options.check_every == 0:
+        _paced(options)  # the check's reads count against the rate limit too
         found = [item.uri for item in read_playlist_items(client, playlist_id)]
         if found != list(now):
             raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, changed=True, message=CHANGED_ELSEWHERE))
