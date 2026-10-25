@@ -27,7 +27,19 @@ DIST = ROOT / "dist"
 WORK = ROOT / "build" / "pyinstaller"
 NAME = "FairShuffle"
 EXTRAS = ("LICENSE", ".env.example")  # copied next to the .exe
-FORBIDDEN = (".env",)  # must never ship: it holds the developer's Client ID
+ALLOWED_ENV = ".env.example"  # the only .env-like file that ships; it holds placeholders
+
+
+def forbidden(path: Path) -> str | None:
+    """Why path must never ship, or None. A .env (or .env.local, my.env...) holds the developer's
+    Client ID; an installed package's direct_url.json holds the project's absolute path, which
+    on Windows includes the user name."""
+    name = path.name
+    if name != ALLOWED_ENV and (name.startswith(".env") or name.endswith(".env")):
+        return "A .env file is in the build folder. Remove it; it must never ship."
+    if name == "direct_url.json":
+        return "Package metadata with a local path is in the build folder; it must never ship."
+    return None
 
 
 class BuildError(Exception):
@@ -70,9 +82,10 @@ def finish_folder(folder: Path) -> None:
         raise BuildError(f"PyInstaller finished but {exe.name} is missing.")
     for extra in EXTRAS:
         shutil.copy2(ROOT / extra, folder / extra)
-    found = [path.name for path in folder.rglob("*") if path.name in FORBIDDEN]
-    if found:
-        raise BuildError("A .env file is in the build folder. Remove it; it must never ship.")
+    for path in folder.rglob("*"):
+        reason = forbidden(path)
+        if reason is not None:
+            raise BuildError(reason)
 
 
 def make_zip(folder: Path, app_version: str) -> Path:

@@ -42,12 +42,17 @@ class SpotifySettings:
 def dev_env_file() -> Path | None:
     """The .env to read: next to FairShuffle.exe in a PyInstaller build (P5-4), in the project
     folder when running from a source checkout, else None."""
-    if getattr(sys, "frozen", False):  # PyInstaller sets sys.frozen in the built app
+    if _built():
         return Path(sys.executable).resolve().parent / ".env"
     project = Path(__file__).resolve().parents[2]  # src/fairshuffle/config.py -> project folder
     if not (project / "pyproject.toml").is_file():
         return None
     return project / ".env"
+
+
+def _built() -> bool:
+    """True in the PyInstaller build, which sets sys.frozen."""
+    return bool(getattr(sys, "frozen", False))
 
 
 def load_settings(env_file: Path | None = None) -> SpotifySettings:
@@ -60,9 +65,10 @@ def load_settings(env_file: Path | None = None) -> SpotifySettings:
 
     client_id = read(CLIENT_ID_VARIABLE)
     if not client_id or client_id == PLACEHOLDER_CLIENT_ID:
+        where = "a .env file next to FairShuffle.exe" if _built() else ".env"
         raise ConfigError(
             f"{CLIENT_ID_VARIABLE} is not set. Register your Spotify app and put its Client ID "
-            f"in .env, as {SETUP_GUIDE} describes."
+            f"in {where}, as {SETUP_GUIDE} in FairShuffle's GitHub repository describes."
         )
     mask_secret(client_id)
 
