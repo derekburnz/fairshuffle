@@ -46,13 +46,17 @@ API_HOST = "api.spotify.com"
 TOKEN_URL = "https://accounts.spotify.com/api/token"  # noqa: S105  # a URL, not a password
 # Read the user's own and collaborative playlists, then write the new order back. GET /me lists
 # user-read-private as its scope (Spotify docs, 2026-10-21); it is asked for only so the menu can
-# show "Signed in as" (P2-4). Its other fields are gone for development mode apps.
+# show "Signed in as" (P2-4). Its other fields are gone for development mode apps. The true
+# shuffle player reads and controls playback in the user's Spotify app (P6-02, checked 2026-10-25).
+PLAYBACK_SCOPES = frozenset({"user-read-playback-state", "user-modify-playback-state"})
 SCOPES = (
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",
     "playlist-modify-public",
     "user-read-private",
+    "user-read-playback-state",
+    "user-modify-playback-state",
 )
 TIMEOUT_SECONDS = 15
 # Refresh a minute early, so a token never runs out between the check and the call.
@@ -268,6 +272,15 @@ class SpotifyAuth:
     @property
     def scope(self) -> frozenset[str]:
         return self._tokens.scope
+
+    @property
+    def can_control_playback(self) -> bool:
+        """False for a sign-in saved before the player (v0.5.0 and older), which lacks the
+        playback scopes. A reply that lists no scopes at all is taken on trust: the player then
+        finds out from Spotify's 403 instead of asking every user to sign in again for nothing.
+        """
+        scope = self._tokens.scope
+        return not scope or scope.issuperset(PLAYBACK_SCOPES)
 
     def access_token(self) -> str:
         """A current access token, refreshed first if it has run out or is about to."""

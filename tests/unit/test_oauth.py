@@ -124,6 +124,8 @@ def test_sign_in_asks_only_for_the_scopes_derek_approved() -> None:
         "playlist-modify-private",
         "playlist-modify-public",
         "user-read-private",  # only so GET /me returns the name for "Signed in as"
+        "user-read-playback-state",  # the true shuffle player (P6-02)
+        "user-modify-playback-state",
     )
 
 
@@ -347,6 +349,34 @@ def test_from_code_saves_the_refresh_token(
     assert stored() == FAKE_REFRESH
     assert auth.access_token() == FAKE_ACCESS
     assert auth.scope == frozenset({"playlist-read-private", "playlist-modify-private"})
+
+
+@pytest.mark.parametrize(
+    ("scope", "allowed"),
+    [
+        ("playlist-read-private user-read-playback-state user-modify-playback-state", True),
+        ("playlist-read-private playlist-modify-private", False),  # saved before the player
+        ("playlist-read-private user-read-playback-state", False),
+        (None, True),  # no scope in the reply: taken on trust, Spotify's 403 says the rest
+    ],
+)
+def test_a_sign_in_knows_whether_it_may_control_playback(
+    spotify: responses.RequestsMock,
+    http: requests.Session,
+    settings: SpotifySettings,
+    scope: str | None,
+    allowed: bool,
+) -> None:
+    reply = token_reply()
+    if scope is None:
+        del reply["scope"]
+    else:
+        reply["scope"] = scope
+    spotify.post(TOKEN_URL, json=reply)
+
+    auth = SpotifyAuth.from_code(http, settings, FAKE_CODE, FAKE_VERIFIER)
+
+    assert auth.can_control_playback is allowed
 
 
 def test_from_store_is_none_when_nobody_signed_in(

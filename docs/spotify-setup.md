@@ -61,6 +61,10 @@ Spotify's docs don't say whether the app's owner has to be on the list. You can 
 
 Before FairShuffle ever writes to a real playlist (milestone M4), it runs on a throwaway one. Whenever you have a minute, create a playlist called **Shuffle Test** with about 30 songs you don't mind seeing reordered. Sign-in (M2) and listing playlists (M3) only read from Spotify, so nothing changes until then.
 
+## 5. Sign in once more for the player (v0.6.0 and later)
+
+The true shuffle player controls playback in your Spotify app, which needs two more permissions than shuffling a playlist: `user-read-playback-state` (see what is playing and on which device) and `user-modify-playback-state` (play, pause, skip and turn Spotify's shuffle off). A sign-in saved by v0.5.0 or older doesn't have them, so FairShuffle says once at start that it needs one more sign-in, and the tray menu shows **Allow playback control…**. Pick it, approve FairShuffle in the browser and you are done. Nothing changes on the dashboard, and Shuffle and Undo keep working in the meantime. If you cancel, FairShuffle stays signed in as before.
+
 ## If something goes wrong
 
 | What you see | Likely cause | Fix |

@@ -107,6 +107,10 @@ class TrayIcon(QSystemTrayIcon):
         self.status_action.setEnabled(False)  # a label, not something to click
         self.account_action = QAction(self.menu)
         self.account_action.triggered.connect(self._on_account_action)
+        # Shown only while the saved sign-in predates the player and lacks its scopes (P6-02).
+        self.playback_action = QAction("Allow &playback control\u2026", self.menu)
+        self.playback_action.triggered.connect(self._on_playback_action)
+        self.playback_action.setVisible(False)
         # The ellipsis is the Windows sign that the item opens a window rather than acting.
         self.picker_action = QAction("Shuffle a &playlist\u2026", self.menu)
         self.picker_action.triggered.connect(self.show_picker)
@@ -114,6 +118,7 @@ class TrayIcon(QSystemTrayIcon):
         if account is not None:
             self.menu.addAction(self.status_action)
             self.menu.addAction(self.account_action)
+            self.menu.addAction(self.playback_action)
             self.menu.addSeparator()
             if playlists is not None and shuffles is not None:
                 self.menu.addAction(self.picker_action)
@@ -186,6 +191,7 @@ class TrayIcon(QSystemTrayIcon):
     def show_account_status(self, status: AccountStatus) -> None:
         """Bring the account lines of the menu up to date, and pass on any message once."""
         signed_in = status.state is AccountState.SIGNED_IN
+        self.playback_action.setVisible(signed_in and not status.playback)
         self.picker_action.setVisible(
             signed_in and self._playlists is not None and self._shuffles is not None
         )
@@ -229,6 +235,10 @@ class TrayIcon(QSystemTrayIcon):
             account.start()
         else:
             account.sign_in()
+
+    def _on_playback_action(self) -> None:
+        if self._account is not None:  # pragma: no branch  # only in the menu with an account
+            self._account.sign_in()
 
     def _forget_about_box(self) -> None:
         self._about_box = None
