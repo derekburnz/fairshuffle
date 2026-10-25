@@ -18,6 +18,7 @@ from fairshuffle.config import ConfigError, SpotifySettings, load_settings
 from fairshuffle.ui import account as account_module
 from fairshuffle.ui.account import (
     PLAYBACK_SIGN_IN,
+    SIGN_IN_CANCELLED,
     UNEXPECTED,
     AccountController,
     AccountState,
@@ -55,6 +56,7 @@ class FakeSignIn:
     """Stands in for BrowserSignIn. Set `result` to an exception or to "ok"."""
 
     result: object = "ok"
+    refresh_token = FAKE_REFRESH
     created: list[FakeSignIn] = []
 
     def __init__(self, http: requests.Session, settings: SpotifySettings, _browser: object) -> None:
@@ -65,8 +67,8 @@ class FakeSignIn:
     def run(self) -> SpotifyAuth:
         if isinstance(FakeSignIn.result, BaseException):
             raise FakeSignIn.result
-        keyring.set_password("FairShuffle", "spotify-refresh-token", FAKE_REFRESH)
-        tokens = Tokens("fake-access-token-1", FAKE_REFRESH, 3600, frozenset())
+        keyring.set_password("FairShuffle", "spotify-refresh-token", FakeSignIn.refresh_token)
+        tokens = Tokens("fake-access-token-1", FakeSignIn.refresh_token, 3600, frozenset())
         return SpotifyAuth(self.http, self.settings, tokens)
 
     def cancel(self) -> None:
@@ -76,6 +78,7 @@ class FakeSignIn:
 @pytest.fixture(autouse=True)
 def fake_sign_in(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     FakeSignIn.result = "ok"
+    FakeSignIn.refresh_token = FAKE_REFRESH
     FakeSignIn.created = []
     monkeypatch.setattr(account_module, "BrowserSignIn", FakeSignIn)
     yield
@@ -187,6 +190,62 @@ def test_signing_in_again_for_playback_replaces_the_old_sign_in(
         AccountState.SIGNED_IN, name="Fake User", message="Signed in as Fake User."
     )
     assert account.status.playback is True
+
+
+def test_signing_in_again_ends_the_old_sign_in_before_saving_the_new_one(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+    old = account.client
+    assert old is not None
+    FakeSignIn.refresh_token = "fake-refresh-token-2"
+
+    account.sign_in()
+
+    with pytest.raises(SignInRequired):  # a worker still holding it can't refresh or save
+        old.get("/me")
+    assert stored() == "fake-refresh-token-2"
+
+
+def test_a_cancel_that_leaves_no_saved_sign_in_says_so(
+    spotify: responses.RequestsMock, seen: list[AccountStatus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+
+    def cancelled_during_the_exchange() -> SpotifyAuth:
+        keyring.delete_password("FairShuffle", "spotify-refresh-token")
+        raise ListenerCancelled("Sign-in was cancelled.")
+
+    monkeypatch.setattr(FakeSignIn, "run", lambda _self: cancelled_during_the_exchange())
+    account.sign_in()
+
+    assert account.status == AccountStatus(AccountState.SIGNED_OUT, message=SIGN_IN_CANCELLED)
+
+
+def test_a_failed_sign_in_for_playback_whose_saved_sign_in_expired_asks_again(
+    spotify: responses.RequestsMock, seen: list[AccountStatus]
+) -> None:
+    save_refresh_token()
+    spotify.post(TOKEN_URL, json={**TOKEN_REPLY, "scope": OLD_SCOPES})
+    spotify.post(TOKEN_URL, status=400, json={"error": "invalid_grant"})
+    spotify.get(ME, json={"display_name": "Fake User"})
+    account = controller(seen)
+    account.start()
+    FakeSignIn.result = CallbackTimeout("The sign-in timed out.")
+
+    account.sign_in()
+
+    assert account.status.state is AccountState.SIGN_IN_AGAIN
+    assert account.status.message == "The sign-in timed out."
 
 
 def test_a_cancelled_sign_in_for_playback_keeps_the_saved_sign_in(
