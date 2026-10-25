@@ -2,8 +2,9 @@
 
 In development they come from the environment first, then from the gitignored .env file at the
 top of the project folder (P2-3), so a value set in the shell always wins over the file. That
-also lets tests give every run fake values without ever reading a developer's real .env. How a
-release build gets a Client ID is decided later (D17).
+also lets tests give every run fake values without ever reading a developer's real .env. The
+prototype .exe reads a .env the user puts next to FairShuffle.exe instead (P5-4); the build never
+ships one. How the public release gets a Client ID is decided later (D17).
 
 The Client ID is registered with mask_secret() as soon as it is read, so it can't reach a log.
 """
@@ -11,6 +12,7 @@ The Client ID is registered with mask_secret() as soon as it is read, so it can'
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,7 +40,10 @@ class SpotifySettings:
 
 
 def dev_env_file() -> Path | None:
-    """The project folder's .env when running from a source checkout, else None."""
+    """The .env to read: next to FairShuffle.exe in a PyInstaller build (P5-4), in the project
+    folder when running from a source checkout, else None."""
+    if getattr(sys, "frozen", False):  # PyInstaller sets sys.frozen in the built app
+        return Path(sys.executable).resolve().parent / ".env"
     project = Path(__file__).resolve().parents[2]  # src/fairshuffle/config.py -> project folder
     if not (project / "pyproject.toml").is_file():
         return None
