@@ -153,6 +153,19 @@ The true shuffle player (M6) adds `user-read-playback-state` (read what is playi
 6. `shuffle/verify.py`: re-reads and compares item counts and URIs.
 7. `ui/tray.py`: "Shuffled Road Trip. Play it from track 1 with Spotify's shuffle off. If the old order shows, sort the playlist by Custom order."
 
+## True Shuffle flow mapped to modules (built in M6)
+
+FairShuffle acts as a remote control: the Spotify app plays the audio, and FairShuffle sends it commands through the Web API Player endpoints (Premium only). In networking terms, FairShuffle builds the route once and installs it, and the Spotify app forwards along it on its own.
+
+1. `ui/tray.py`: the user ticks **True Shuffle**. `ui/true_shuffle.py` checks that the sign-in has the playback scopes, then starts the session on a worker thread.
+2. `spotify/player.py`: `controllable_device()` finds the active Spotify app (or stops with "Open the Spotify app…" before anything changes), then `GET /me/player` says which playlist is playing, which song, and how far in.
+3. `spotify/playlists.py`: reads that playlist's items. It must be one the user owns or collaborates on (Spotify's February 2026 rule).
+4. `shuffle/session.py` with `shuffle/engine.py`: the song on now goes first, then the rest in a Fisher-Yates order. Local files are left out, and the list is capped at `MAX_SONGS` with a fair sample.
+5. `spotify/player.py`: shuffle off, then `PUT /me/player/play` with the `uris` list and `position_ms`, so the song carries on from the same point (P6-01a). Nothing is written to any playlist or library.
+6. `shuffle/session.py`: reads the state back up to four times and sends the commands again until Spotify reports shuffle off and our first song on. Spotify says the order of player commands is not guaranteed.
+7. `ui/true_shuffle.py`: the tick box shows on, and a notice gives the song count. Once a minute it checks that Spotify still plays our list (no context, and the song is one of ours), and it clears the tick when the user has moved on.
+8. Untick: `shuffle/session.py` `stop()` restores Spotify's shuffle setting and plays the original playlist from the song that is on now, at the same point. If the user had already moved on, it changes nothing.
+
 ## Where data lives
 
 | Data | Location | In Git? | Built in |

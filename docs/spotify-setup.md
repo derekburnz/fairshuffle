@@ -63,7 +63,7 @@ Before FairShuffle ever writes to a real playlist (milestone M4), it runs on a t
 
 ## 5. Sign in once more for the player (v0.6.0 and later)
 
-The true shuffle player controls playback in your Spotify app, which needs two more permissions than shuffling a playlist: `user-read-playback-state` (see what is playing and on which device) and `user-modify-playback-state` (play, pause, skip and turn Spotify's shuffle off). A sign-in saved by v0.5.0 or older doesn't have them, so FairShuffle says once at start that it needs one more sign-in, and the tray menu shows **Allow playback control…**. Pick it, approve FairShuffle in the browser and you are done. Nothing changes on the dashboard, and Shuffle and Undo keep working in the meantime. If you close the tab or cancel instead, FairShuffle picks your earlier sign-in back up.
+True Shuffle (the tick box in the tray menu) controls playback in your Spotify app, which needs two more permissions than shuffling a playlist: `user-read-playback-state` (see what is playing and on which device) and `user-modify-playback-state` (play, pause, skip and turn Spotify's shuffle off). A sign-in saved by v0.5.0 or older doesn't have them, so FairShuffle says once at start that it needs one more sign-in, and the tray menu shows **Allow playback control…**. Pick it, approve FairShuffle in the browser and you are done. Nothing changes on the dashboard, and Shuffle and Undo keep working in the meantime. If you close the tab or cancel instead, FairShuffle picks your earlier sign-in back up.
 
 ## If something goes wrong
 
