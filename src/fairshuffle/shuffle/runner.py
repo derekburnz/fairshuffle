@@ -4,7 +4,9 @@ A shuffle goes:
 
 1. Read the playlist's snapshot_id, then its items (from the cache when unchanged), then the
    snapshot_id again. The items call carries no snapshot_id, so if the two differ the playlist
-   changed while it was being read, and the run stops before writing anything.
+   may have changed while it was being read. Right after a write Spotify's reads can briefly
+   disagree (second live run, #31), so the read is tried again up to READ_TRIES times, a
+   second apart, before the run stops. Nothing has been written yet, so trying again is safe.
 2. Shuffle with Fisher-Yates and build the plan for the chosen mode (D12). In fast mode, if the
    plan would remove local files or items Spotify sends no URI for, stop and let the app ask the
    user first (P4-2), unless they already said "shuffle fast anyway".
@@ -12,9 +14,11 @@ A shuffle goes:
 4. Send the writes, pacing them and reporting progress. Retry-After waits happen inside
    SpotifyClient. In keep-order mode each move carries the latest snapshot_id, cancel is honoured
    between moves (every song is still there, just partly shuffled), and every CHECK_EVERY moves
-   the snapshot_id is read to catch another editor. That catches an edit made between two of
-   our moves; one that lands together with a move is already in that move's reply, so only
-   the read-back in step 5 can see it. Fast mode is a handful of calls and can't
+   the playlist is read and compared with the order our moves should have made, to catch
+   another editor (P4-6). The snapshot_id isn't used for that: on the real API the one GET
+   /playlists/{id} returns never matched the one the last reorder returned (live test, #31).
+   An edit made after the last check is caught by the read-back in step 5. Fast mode is a
+   handful of calls and can't
    stop halfway without leaving the playlist short, so cancel only works before its first write.
 5. Read the playlist back and verify it holds the same songs in the planned order.
 
@@ -66,7 +70,9 @@ from fairshuffle.spotify.playlists import read_playlist_items
 from fairshuffle.storage import backups
 from fairshuffle.storage.backups import BackupError
 
-CHECK_EVERY = 50  # keep-order mode reads the snapshot_id after this many moves
+READ_TRIES = 3  # attempts at a steady read before giving up
+SETTLE_SECONDS = 1.0  # wait between them, for Spotify's reads to catch up with a write
+CHECK_EVERY = 50  # keep-order mode reads the playlist back after this many moves
 PACE_SECONDS = 0.05  # at most 20 writes a second; Spotify publishes no limit, so stay gentle
 _SNAPSHOT = re.compile(r"[\x21-\x7e]{1,256}")  # as spotify/playlists.py
 
@@ -166,7 +172,7 @@ def _shuffle(
     mode: Mode,
     options: Options,
 ) -> Outcome:
-    snapshot, items = _read_steady(client, cache, playlist_id)
+    snapshot, items = _read_steady(client, cache, playlist_id, options)
     if len(items) < 2:
         return Outcome(Result.NOTHING_TO_DO, message="There is nothing to shuffle yet.")
     order = shuffled(range(len(items)))  # no random source passed: secrets.SystemRandom
@@ -190,7 +196,7 @@ def _undo(
     backup = backups.newest(playlist_id)
     if backup is None:
         return Outcome(Result.FAILED, message="There is no backup of this playlist to put back.")
-    snapshot, current = _read_steady(client, cache, playlist_id)
+    snapshot, current = _read_steady(client, cache, playlist_id, options)
     target = list(backup.items)
     order: list[int] = []
     if mode is Mode.KEEP_ORDER:
@@ -235,11 +241,15 @@ def _write(
     else:
         plan = reorder_plan(order)
         expected = [items[k].uri for k in order]
+    now = [item.uri for item in items]  # keep-order: the order our moves have made so far
     landed = 0  # writes Spotify confirmed
     try:
         for write in plan:
             if isinstance(write, Move):
-                snapshot = _move(client, playlist_id, path, write, snapshot, landed, options)
+                snapshot = _move(client, playlist_id, path, write, snapshot, now, landed, options)
+                # reorder_plan only moves entries up (insert_before < range_start), so this
+                # pop-then-insert is exactly what Spotify does with the move.
+                now.insert(write.insert_before, now.pop(write.range_start))
             else:
                 _paced(options)
                 if isinstance(write, Replace):
@@ -289,14 +299,18 @@ def _move(
     path: str,
     move: Move,
     snapshot: str,
+    now: Sequence[str | None],
     landed: int,
     options: Options,
 ) -> str:
-    """Send one reorder and return the new snapshot_id."""
+    """Send one reorder and return the new snapshot_id. now is the order before this move."""
     if options.cancel is not None and options.cancel.is_set():
         raise _Stop(Outcome(Result.CANCELLED, changed=landed > 0, message=_cancelled(landed)))
-    if landed and landed % options.check_every == 0 and _snapshot(client, playlist_id) != snapshot:
-        raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, changed=True, message=CHANGED_ELSEWHERE))
+    if landed and landed % options.check_every == 0:
+        _paced(options)  # the check's reads count against the rate limit too
+        found = [item.uri for item in read_playlist_items(client, playlist_id)]
+        if found != list(now):
+            raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, changed=True, message=CHANGED_ELSEWHERE))
     _paced(options)
     reply = client.put(
         path,
@@ -314,23 +328,27 @@ def _move(
 
 
 def _read_steady(
-    client: SpotifyClient, cache: PlaylistItemsCache, playlist_id: str
+    client: SpotifyClient, cache: PlaylistItemsCache, playlist_id: str, options: Options
 ) -> tuple[str, tuple[PlaylistItem, ...]]:
     """The playlist's snapshot_id and items, checked unchanged across the read."""
-    before = _snapshot(client, playlist_id)
-    playlist = Playlist(
-        id=playlist_id,
-        name="",
-        owner_id="",
-        collaborative=False,
-        snapshot_id=before,
-        item_count=None,
-    )
-    items = cache.items(client, playlist)
-    if _snapshot(client, playlist_id) != before:
+    for attempt in range(READ_TRIES):
+        if attempt:
+            options.sleep(SETTLE_SECONDS)
+        before = _snapshot(client, playlist_id)
+        playlist = Playlist(
+            id=playlist_id,
+            name="",
+            owner_id="",
+            collaborative=False,
+            snapshot_id=before,
+            item_count=None,
+        )
+        items = cache.items(client, playlist)
+        if _snapshot(client, playlist_id) == before:
+            return before, items
         cache.forget(playlist_id)
-        raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, message=CHANGED_WHILE_READING))
-    return before, items
+        log.info("The playlist's snapshot_id moved during the read (try %d)", attempt + 1)
+    raise _Stop(Outcome(Result.CHANGED_ELSEWHERE, message=CHANGED_WHILE_READING))
 
 
 def _snapshot(client: SpotifyClient, playlist_id: str) -> str:

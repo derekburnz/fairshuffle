@@ -70,6 +70,15 @@ uv tool install "pyright[nodejs]==1.1.414"
 
 From M2 on, the app reads your Spotify Client ID from a `.env` file. [`docs/spotify-setup.md`](docs/spotify-setup.md) walks through registering your own Spotify developer app and filling in `.env`. `.env` is gitignored; never commit it.
 
+To try the shuffle against the real Spotify before the picker has its buttons, `scripts/live_shuffle_test.py` works on one playlist only: the one you own named exactly "Shuffle Test". Make one with about 30 songs, sign in from the tray, then quit FairShuffle so the script has the saved sign-in to itself (it refuses to start while the tray app runs, and it takes at most 100 songs):
+
+```powershell
+uv run python scripts/live_shuffle_test.py          # finds the playlist; writes nothing
+uv run python scripts/live_shuffle_test.py --run    # 5 fast and 5 keep-order shuffles, then an Undo
+```
+
+Each step is read back and checked. Fast mode resets the songs' "date added", which is why it runs on a playlist made for testing.
+
 ## How this project is run
 
 FairShuffle is a solo portfolio project run like a team project:

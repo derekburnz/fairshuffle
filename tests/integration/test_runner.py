@@ -301,7 +301,7 @@ def test_fast_mode_ignores_cancel_once_writing(
     assert outcome.result is Result.DONE  # stopping after the replace would leave it short
 
 
-def test_a_change_while_reading_stops_before_writing(
+def test_a_change_while_reading_is_read_again(
     fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
 ) -> None:
     playlist = fake.add_playlist("fakelist", songs(60))
@@ -314,8 +314,80 @@ def test_a_change_while_reading_stops_before_writing(
 
     outcome = shuffle_playlist(client, cache, "fakelist", Mode.FAST, quick())
 
+    assert outcome.result is Result.DONE
+    assert Counter(playlist.uris) == Counter(songs(61))  # shuffled what is there now
+
+
+def test_a_playlist_that_keeps_changing_while_read_stops_before_writing(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
+) -> None:
+    playlist = fake.add_playlist("fakelist", songs(60))
+
+    def edit_every_read(call: Call) -> None:
+        if call.path.endswith("/items") and call.query.get("offset", ["0"])[0] == "0":
+            fake.edit("fakelist", [*playlist.uris, "spotify:track:new"])
+
+    fake.before_request = edit_every_read
+    sleeps: list[float] = []
+
+    outcome = shuffle_playlist(client, cache, "fakelist", Mode.FAST, quick(sleep=sleeps.append))
+
     assert (outcome.result, outcome.changed) == (Result.CHANGED_ELSEWHERE, False)
     assert fake.writes() == []
+    assert sleeps == [runner.SETTLE_SECONDS] * (runner.READ_TRIES - 1)
+
+
+@pytest.mark.parametrize("mode", [Mode.FAST, Mode.KEEP_ORDER])
+def test_lagging_reads_after_a_write_dont_stop_the_next_run(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache, mode: Mode
+) -> None:
+    """The second live run (#31): run 2 began right after run 1's write and saw two
+    snapshot_ids, as if a read came from a server that hadn't caught up yet."""
+    fake.add_playlist("fakelist", songs(60))
+    fake.lagging_snapshot_reads = 1
+    fake.replies_name_versions_apart = True
+
+    first = shuffle_playlist(client, cache, "fakelist", mode, quick(check_every=10))
+    second = shuffle_playlist(client, cache, "fakelist", mode, quick(check_every=10))
+
+    assert (first.result, second.result) == (Result.DONE, Result.DONE)
+
+
+@pytest.mark.parametrize("mode", [Mode.FAST, Mode.KEEP_ORDER])
+def test_snapshot_ids_named_apart_dont_stop_the_run(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache, mode: Mode
+) -> None:
+    """The live test (#31): GET /playlists/{id} never returned the snapshot_id a reorder did."""
+    playlist = fake.add_playlist("fakelist", songs(60))
+    fake.replies_name_versions_apart = True
+
+    outcome = shuffle_playlist(client, cache, "fakelist", mode, quick(check_every=10))
+
+    assert (outcome.result, outcome.verdict is not None and outcome.verdict.ok) == (
+        Result.DONE,
+        True,
+    )
+    assert Counter(playlist.uris) == Counter(songs(60))
+
+
+def test_another_editor_moving_a_song_between_moves_stops_the_run(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
+) -> None:
+    playlist = fake.add_playlist("fakelist", songs(40))
+    moved = [False]
+
+    def move_one_before_the_check(call: Call) -> None:
+        is_check = call.method == "GET" and call.path.endswith("/items")
+        if is_check and len(fake.writes()) == 5 and not moved[0]:
+            moved[0] = True
+            fake.edit("fakelist", [*playlist.uris[1:], playlist.uris[0]])
+
+    fake.before_request = move_one_before_the_check
+
+    outcome = shuffle_playlist(client, cache, "fakelist", Mode.KEEP_ORDER, quick(check_every=5))
+
+    assert (outcome.result, outcome.changed) == (Result.CHANGED_ELSEWHERE, True)
+    assert len(fake.writes()) == 5
 
 
 def test_another_editor_between_moves_stops_the_run(
@@ -324,7 +396,7 @@ def test_another_editor_between_moves_stops_the_run(
     playlist = fake.add_playlist("fakelist", songs(40))
 
     def edit_before_the_check(call: Call) -> None:
-        is_check = call.method == "GET" and not call.path.endswith("/items")
+        is_check = call.method == "GET" and call.path.endswith("/items")
         if is_check and len(fake.writes()) == 5 and playlist.uris[0] != "spotify:track:new":
             fake.edit("fakelist", ["spotify:track:new", *playlist.uris])
 
@@ -336,11 +408,11 @@ def test_another_editor_between_moves_stops_the_run(
     assert len(fake.writes()) == 5  # stopped at the next check, not at the end
 
 
-def test_an_edit_landing_with_one_of_ours_is_caught_by_the_read_back(
+def test_an_edit_landing_with_one_of_ours_is_caught_at_the_next_check(
     fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
 ) -> None:
-    # Spotify's reply to our write already includes the other edit, so the snapshot_id checks
-    # can't see it; the read-back after the last write does.
+    # Spotify's reply to our write already includes the other edit, so no snapshot_id could show
+    # it; reading the songs back at the next check does.
     playlist = fake.add_playlist("fakelist", songs(40))
 
     def edit_with_the_fourth_move(call: Call) -> None:
@@ -350,6 +422,23 @@ def test_an_edit_landing_with_one_of_ours_is_caught_by_the_read_back(
     fake.before_request = edit_with_the_fourth_move
 
     outcome = shuffle_playlist(client, cache, "fakelist", Mode.KEEP_ORDER, quick(check_every=5))
+
+    assert (outcome.result, outcome.changed) == (Result.CHANGED_ELSEWHERE, True)
+    assert len(fake.writes()) == 5
+
+
+def test_an_edit_after_the_last_check_is_caught_by_the_read_back(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
+) -> None:
+    playlist = fake.add_playlist("fakelist", songs(40))
+
+    def edit_with_the_fourth_move(call: Call) -> None:
+        if call.method == "PUT" and len(fake.writes()) == 4:
+            fake.edit("fakelist", [*playlist.uris, "spotify:track:new"])
+
+    fake.before_request = edit_with_the_fourth_move
+
+    outcome = shuffle_playlist(client, cache, "fakelist", Mode.KEEP_ORDER, quick(check_every=1000))
 
     assert (outcome.result, outcome.changed) == (Result.NOT_VERIFIED, True)
 
