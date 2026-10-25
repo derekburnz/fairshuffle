@@ -26,6 +26,7 @@ from fairshuffle import __version__
 from fairshuffle.storage.logging_setup import setup_logging
 from fairshuffle.ui.account import AccountController
 from fairshuffle.ui.playlists import PlaylistController
+from fairshuffle.ui.shuffle import ShuffleController
 from fairshuffle.ui.tray import TrayIcon
 
 APP_NAME = "FairShuffle"
@@ -225,11 +226,14 @@ def run() -> int:
         instance.release()
         return 1
     account = AccountController()
-    # In this order: the account's jobs wrap up before the lock lets a new copy start.
+    shuffles = ShuffleController(account)
+    # In this order: a shuffle stops before the account closes its connection, and the
+    # account's jobs wrap up before the lock lets a new copy start.
+    app.aboutToQuit.connect(shuffles.shutdown)
     app.aboutToQuit.connect(account.shutdown)
     app.aboutToQuit.connect(instance.release)
     playlists = PlaylistController(account)
-    tray = TrayIcon(quit_app=app.quit, account=account, playlists=playlists)
+    tray = TrayIcon(quit_app=app.quit, account=account, playlists=playlists, shuffles=shuffles)
     instance.activation_requested.connect(tray.show_already_running)
     tray.show()
     account.start()  # resumes a saved sign-in without the browser

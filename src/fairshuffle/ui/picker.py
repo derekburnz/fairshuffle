@@ -1,4 +1,4 @@
-"""The playlist picker window (D11 B): search, the playlists you can edit, Refresh and Shuffle.
+"""The playlist picker window (D11 B): search, the playlists you can edit, Shuffle and Undo.
 
 It opens from the tray and is about 380 by 520, like the D11 mockup in docs/screenshots/. Closing
 it only hides it, so it opens again where it was with the search and selection kept.
@@ -11,9 +11,17 @@ the full name in a tooltip.
 When there is nothing to list, the list's space says why instead: no playlists you can edit yet,
 a load that failed, or a search with no match. A list of hundreds or thousands of playlists
 fills in one go, and while a search narrows it the line underneath says how many it shows.
+
+Shuffle and Undo run through the ShuffleController. While one runs, the line underneath shows
+its progress and Cancel appears. When a run needs the user's say (fast mode would drop local
+files, P4-2, or a fast Undo would remove songs added since) or may have left the playlist
+changed, a dialog asks; otherwise the line underneath says how it went. The "Keep date added
+(slower)" box above the buttons picks keep-order mode and is remembered (P4-4).
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
 
 from PySide6.QtCore import (
     QAbstractItemModel,
@@ -25,10 +33,12 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QFont, QKeyEvent, QPainter, QStandardItem, QStandardItemModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListView,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QStyle,
@@ -38,14 +48,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from fairshuffle.shuffle.runner import Mode, Result
 from fairshuffle.spotify.models import Playlist
 from fairshuffle.ui.account import AccountController, AccountState, AccountStatus
 from fairshuffle.ui.playlists import PlaylistController, PlaylistsState, PlaylistsStatus
+from fairshuffle.ui.shuffle import Action, Finished, Progress, ShuffleController
 
 WINDOW_SIZE = QSize(380, 520)
 ROW_HEIGHT = 40
 UNTITLED = "Untitled playlist"
-SHUFFLE_LATER = "Shuffling arrives in FairShuffle 0.4."
+KEEP_DATE_ADDED = "&Keep date added (slower)"
+KEEP_DATE_ADDED_TIP = (
+    "Moves the songs one at a time, so each keeps its date added and local files stay. "
+    "About 20 seconds for 60 songs. Unticked, FairShuffle rewrites the list in a few seconds."
+)
+UNDO_TIP = "Put back the order from before this playlist's last shuffle."
+CANCEL_TIP = (
+    "Stop the shuffle. Keep-order mode stops between moves; fast mode can only stop before it "
+    "starts writing."
+)
+NOT_PUT_BACK = "FairShuffle can't add them back, and neither can Undo."
 SIGNED_OUT = "Sign in to Spotify from the tray menu to see your playlists."
 EMPTY = (
     "No playlists to shuffle yet. FairShuffle can only reorder playlists you own or collaborate "
@@ -54,6 +76,7 @@ EMPTY = (
 LOAD_FAILED = "Couldn't load your playlists. Press Refresh to try again."
 KEPT_LIST = "The list shown is from before."
 MAX_QUERY_SHOWN = 40  # a longer search is cut in the "no match" line so it still wraps
+MAX_NAME_SHOWN = 60  # a longer playlist name is cut in the status line and dialogs
 
 COUNT_ROLE = Qt.ItemDataRole.UserRole + 1  # the "148 items" text shown on the right of a row
 ID_ROLE = Qt.ItemDataRole.UserRole + 2  # the playlist's Spotify ID
@@ -76,10 +99,52 @@ def list_summary(count: int, matching: int | None = None) -> str:
 
 
 def no_match(query: str) -> str:
-    query = query.strip()
-    if len(query) > MAX_QUERY_SHOWN:
-        query = query[: MAX_QUERY_SHOWN - 1].rstrip() + "…"
-    return f"No playlists match \u201c{query}\u201d."
+    return f"No playlists match {quoted(query, MAX_QUERY_SHOWN)}."
+
+
+def quoted(text: str, limit: int = MAX_NAME_SHOWN) -> str:
+    """text in curly quotes, cut with an ellipsis past limit characters."""
+    text = text.strip()
+    if len(text) > limit:
+        text = text[: limit - 1].rstrip() + "…"
+    return f"\u201c{text}\u201d"
+
+
+def running_text(progress: Progress) -> str:
+    """ "Shuffling “Road trip”… 12 of 59 steps", for the line under the list."""
+    name = quoted(progress.playlist.name or UNTITLED)
+    verb = "Shuffling" if progress.action is Action.SHUFFLE else "Putting back"
+    if progress.total:
+        return f"{verb} {name}\u2026 {progress.done:,} of {progress.total:,} steps"
+    return f"{verb} {name}\u2026"
+
+
+def finished_text(finished: Finished) -> str:
+    """How a run ended, for the line under the list."""
+    outcome = finished.outcome
+    name = quoted(finished.playlist.name or UNTITLED)
+    if outcome.result is Result.DONE and outcome.changed:
+        if finished.action is Action.SHUFFLE:
+            done = f"Shuffled {name}. Play it from track 1 with shuffle off."
+        else:
+            done = f"Put back the order of {name} from before the shuffle."
+        return f"{done} {outcome.message}".strip()
+    return outcome.message
+
+
+def choose(parent: QWidget, title: str, text: str, buttons: Sequence[str], default: int) -> int:
+    """Ask with a dialog and return the index of the button pressed. The last button is the
+    one Esc and the close button press, so it must be the safe choice."""
+    box = QMessageBox(QMessageBox.Icon.Question, title, text, QMessageBox.StandardButton.NoButton)
+    box.setParent(parent, box.windowFlags())
+    box.setTextFormat(Qt.TextFormat.PlainText)  # the text quotes a playlist name
+    pressed = [box.addButton(label, QMessageBox.ButtonRole.ActionRole) for label in buttons]
+    box.setDefaultButton(pressed[default])
+    box.setEscapeButton(pressed[-1])
+    box.exec()
+    clicked = box.clickedButton()
+    box.deleteLater()
+    return pressed.index(clicked) if clicked in pressed else len(buttons) - 1  # type: ignore[arg-type]
 
 
 class PlaylistRowDelegate(QStyledItemDelegate):
@@ -129,11 +194,13 @@ class PlaylistPicker(QWidget):
         self,
         account: AccountController,
         playlists: PlaylistController,
+        shuffles: ShuffleController,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent, Qt.WindowType.Window)
         self._account = account
         self._playlists = playlists
+        self._shuffles = shuffles
         self._shown_playlists: tuple[Playlist, ...] = ()
         self.setWindowTitle("FairShuffle")
         self.resize(WINDOW_SIZE)
@@ -169,6 +236,7 @@ class PlaylistPicker(QWidget):
         self.list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setAccessibleName("Playlists you can edit")
+        self.list.selectionModel().currentChanged.connect(lambda *_: self._update_buttons())
 
         # Shown in the list's place when there is nothing to list, saying why.
         self.placeholder = QLabel()
@@ -184,15 +252,28 @@ class PlaylistPicker(QWidget):
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         self.status_label.setWordWrap(True)
 
+        self.keep_date_added = QCheckBox(KEEP_DATE_ADDED)
+        self.keep_date_added.setToolTip(KEEP_DATE_ADDED_TIP)
+        self.keep_date_added.setChecked(shuffles.keep_date_added)
+        self.keep_date_added.toggled.connect(shuffles.set_keep_date_added)
+
         self.refresh_button = QPushButton("&Refresh")
         self.refresh_button.clicked.connect(playlists.refresh)
+        self.undo_button = QPushButton("&Undo")
+        self.undo_button.setToolTip(UNDO_TIP)
+        self.undo_button.clicked.connect(self.undo)
+        self.cancel_button = QPushButton("&Cancel")
+        self.cancel_button.setToolTip(CANCEL_TIP)
+        self.cancel_button.clicked.connect(shuffles.cancel)
+        self.cancel_button.setVisible(False)
         self.shuffle_button = QPushButton("&Shuffle")
-        self.shuffle_button.setEnabled(False)  # M4 builds the shuffle itself
-        self.shuffle_button.setToolTip(SHUFFLE_LATER)
+        self.shuffle_button.clicked.connect(self.shuffle)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.refresh_button)
         buttons.addStretch()
+        buttons.addWidget(self.undo_button)
+        buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.shuffle_button)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 16)
@@ -202,10 +283,13 @@ class PlaylistPicker(QWidget):
         layout.addWidget(self.search)
         layout.addWidget(self.body, stretch=1)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.keep_date_added)
         layout.addLayout(buttons)
 
         account.status_changed.connect(self.show_account_status)
         playlists.status_changed.connect(self.show_playlists)
+        shuffles.running_changed.connect(self.show_running)
+        shuffles.finished.connect(self.show_finished)
         self.show_account_status(account.status)
         self.show_playlists(playlists.status)
 
@@ -224,15 +308,119 @@ class PlaylistPicker(QWidget):
             self.account_label.setText("Signed in to Spotify")
         else:
             self.account_label.setText("Not signed in to Spotify")
+        self._update_buttons()
+
+    def selected_playlist(self) -> Playlist | None:
+        playlist_id = self.selected_playlist_id()
+        if playlist_id is None or self.body.currentWidget() is not self.list:
+            return None
+        return next((p for p in self._shown_playlists if p.id == playlist_id), None)
+
+    def shuffle(self) -> None:
+        playlist = self.selected_playlist()
+        if playlist is not None:
+            self._shuffles.shuffle(playlist)
+
+    def undo(self) -> None:
+        playlist = self.selected_playlist()
+        if playlist is not None:
+            self._shuffles.undo(playlist)
+
+    def show_running(self, progress: Progress | None) -> None:
+        if progress is not None:
+            self.status_label.setText(running_text(progress))
+        self._update_buttons()
+
+    def show_finished(self, finished: Finished) -> None:
+        """Say how a run ended, asking first when the user has a choice to make."""
+        outcome = finished.outcome
+        self.status_label.setText(finished_text(finished))
+        self._update_buttons()
+        if self._account.status.state is not AccountState.SIGNED_IN:
+            return  # signed out mid-run: nothing more can be done for this account here
+        if outcome.result is Result.NEEDS_CONFIRM:
+            self._bring_forward()
+            if finished.action is Action.SHUFFLE:
+                self._ask_fast_losses(finished)
+            else:
+                self._ask_undo_losses(finished)
+        elif outcome.changed and outcome.result is not Result.DONE:
+            self._bring_forward()
+            self._offer_undo(finished)
+
+    def _ask_fast_losses(self, finished: Finished) -> None:
+        """P4-2: fast mode would drop local files or songs Spotify no longer has."""
+        playlist, losses = finished.playlist, finished.outcome.losses
+        answer = choose(
+            self,
+            f"Shuffle {quoted(playlist.name or UNTITLED)}?",
+            f"{finished.outcome.message} {NOT_PUT_BACK}",
+            ["Use &keep-order mode", "Shuffle &fast anyway", "Cancel"],
+            default=0,
+        )
+        if answer == 0:
+            self._shuffles.shuffle(playlist, Mode.KEEP_ORDER)
+        elif answer == 1:
+            self._shuffles.shuffle(playlist, Mode.FAST, allowed_losses=losses)
+        else:
+            self.status_label.setText("Cancelled. Nothing was changed.")
+
+    def _ask_undo_losses(self, finished: Finished) -> None:
+        playlist, losses = finished.playlist, finished.outcome.losses
+        answer = choose(
+            self,
+            f"Undo the shuffle of {quoted(playlist.name or UNTITLED)}?",
+            finished.outcome.message,
+            ["&Undo anyway", "Cancel"],
+            default=1,
+        )
+        if answer == 0:
+            self._shuffles.undo(playlist, Mode.FAST, allowed_losses=losses)
+        else:
+            self.status_label.setText("Cancelled. Nothing was changed.")
+
+    def _offer_undo(self, finished: Finished) -> None:
+        """The run stopped after something may have been written: offer the backup."""
+        what = "shuffle" if finished.action is Action.SHUFFLE else "Undo"
+        answer = choose(
+            self,
+            f"The {what} didn't finish",
+            finished.outcome.message,
+            ["&Undo now", "&Leave it"],
+            default=0,
+        )
+        if answer == 0:
+            # Undo in the mode that was running: after a fast run cut off between its replace
+            # and its adds, the playlist is short, and only a fast Undo can fill it back in.
+            self._shuffles.undo(finished.playlist, finished.mode)
+
+    def _bring_forward(self) -> None:
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _update_buttons(self) -> None:
+        running = self._shuffles.running is not None
+        signed_in = self._account.status.state is AccountState.SIGNED_IN
+        playlist = self.selected_playlist() if signed_in else None
+        ready = playlist is not None and not running
+        self.shuffle_button.setEnabled(ready)
+        self.undo_button.setEnabled(ready and self._shuffles.has_backup(playlist.id))  # type: ignore[union-attr]
+        self.cancel_button.setVisible(running)
+        self.keep_date_added.setEnabled(not running)
+        loading = self._playlists.status.state is PlaylistsState.LOADING
+        self.refresh_button.setEnabled(not loading and not running)
 
     def show_playlists(self, status: PlaylistsStatus) -> None:
         """Fill the list from status and say what is going on underneath it."""
         if status.playlists != self._shown_playlists:
             self._fill(status.playlists)
-        self.refresh_button.setEnabled(status.state is not PlaylistsState.LOADING)
         total = len(status.playlists)
         matching = self.filtered.rowCount() if self.search.text() else None
-        if status.state is PlaylistsState.LOADING:
+        running = self._shuffles.running
+        if running is not None:
+            self.status_label.setText(running_text(running))  # the run's progress comes first
+        elif status.state is PlaylistsState.LOADING:
             self.status_label.setText("Loading your playlists…")
         elif status.state is PlaylistsState.FAILED:
             message = status.message or "Couldn't load your playlists."
@@ -242,6 +430,7 @@ class PlaylistPicker(QWidget):
         else:
             self.status_label.setText(SIGNED_OUT)
         self._show_placeholder(self._placeholder_text(status, total, matching))
+        self._update_buttons()
 
     def _placeholder_text(self, status: PlaylistsStatus, total: int, matching: int | None) -> str:
         """Why the list is empty, or "" when it has rows (or is still loading its first rows)."""
