@@ -15,6 +15,7 @@ from fairshuffle import __version__, app
 from fairshuffle.storage.logging_setup import HOME_MASK
 from fairshuffle.ui.account import AccountController
 from fairshuffle.ui.playlists import PlaylistController
+from fairshuffle.ui.shuffle import ShuffleController
 from fairshuffle.ui.tray import TrayIcon
 
 
@@ -30,8 +31,9 @@ def tray_that_quits_once_running(
     quit_app: Callable[[], None],
     account: AccountController | None = None,
     playlists: PlaylistController | None = None,
+    shuffles: ShuffleController | None = None,
 ) -> TrayIcon:
-    tray = TrayIcon(quit_app=quit_app, account=account, playlists=playlists)
+    tray = TrayIcon(quit_app=quit_app, account=account, playlists=playlists, shuffles=shuffles)
     # Picks Quit from the menu as soon as the event loop is running.
     QTimer.singleShot(0, tray.quit_action.trigger)
     return tray
@@ -56,15 +58,18 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
 
     accounts: list[AccountController | None] = []
     lists: list[PlaylistController | None] = []
+    runs: list[ShuffleController | None] = []
 
     def record_tray(
         quit_app: Callable[[], None],
         account: AccountController | None = None,
         playlists: PlaylistController | None = None,
+        shuffles: ShuffleController | None = None,
     ) -> TrayIcon:
         accounts.append(account)
         lists.append(playlists)
-        created.append(tray_that_quits_once_running(quit_app, account, playlists))
+        runs.append(shuffles)
+        created.append(tray_that_quits_once_running(quit_app, account, playlists, shuffles))
         return created[-1]
 
     monkeypatch.setattr(app, "TrayIcon", record_tray)
@@ -74,6 +79,7 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     assert not created[0].isVisible()
     assert isinstance(accounts[0], AccountController)  # the menu has the account items
     assert isinstance(lists[0], PlaylistController)  # and the playlist picker
+    assert isinstance(runs[0], ShuffleController)  # with its Shuffle and Undo buttons
 
 
 def test_run_explains_and_exits_with_code_one_without_a_notification_area(

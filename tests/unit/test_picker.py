@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 
 import pytest
+from fakes.ui_fakes import FakeAccount, HeldJobs, playlist
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 from pytestqt.qtbot import QtBot
-from ui_fakes import FakeAccount, HeldJobs, playlist
 
 from fairshuffle.spotify.errors import SpotifyUnavailable
 from fairshuffle.ui.picker import (
@@ -19,7 +19,6 @@ from fairshuffle.ui.picker import (
     LOAD_FAILED,
     MAX_QUERY_SHOWN,
     ROW_HEIGHT,
-    SHUFFLE_LATER,
     SIGNED_OUT,
     UNTITLED,
     PlaylistPicker,
@@ -29,6 +28,7 @@ from fairshuffle.ui.picker import (
     no_match,
 )
 from fairshuffle.ui.playlists import PlaylistController
+from fairshuffle.ui.shuffle import ShuffleController
 
 
 @pytest.fixture
@@ -50,10 +50,15 @@ def lists(
 
 
 @pytest.fixture
+def shuffles(account: FakeAccount) -> ShuffleController:
+    return ShuffleController(account, runner=HeldJobs())  # type: ignore[arg-type]
+
+
+@pytest.fixture
 def picker(
-    qtbot: QtBot, account: FakeAccount, lists: PlaylistController
+    qtbot: QtBot, account: FakeAccount, lists: PlaylistController, shuffles: ShuffleController
 ) -> Iterator[PlaylistPicker]:
-    window = PlaylistPicker(account, lists)  # type: ignore[arg-type]
+    window = PlaylistPicker(account, lists, shuffles)  # type: ignore[arg-type]
     qtbot.addWidget(window)
     yield window
     window.hide()
@@ -106,9 +111,9 @@ def test_the_window_matches_the_d11_mockup(picker: PlaylistPicker) -> None:
     assert picker.shuffle_button.text() == "&Shuffle"
 
 
-def test_shuffle_waits_for_the_next_version(picker: PlaylistPicker) -> None:
+def test_shuffle_waits_for_a_playlist(picker: PlaylistPicker) -> None:
     assert not picker.shuffle_button.isEnabled()
-    assert picker.shuffle_button.toolTip() == SHUFFLE_LATER
+    assert not picker.undo_button.isEnabled()
 
 
 def test_opening_loads_the_list_and_focuses_search(
