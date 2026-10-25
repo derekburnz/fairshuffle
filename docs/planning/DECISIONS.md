@@ -94,6 +94,8 @@ Claude fills this in after each answer.
 | P5-5 | How the v0.5.0 check runs while Derek is away from his PC | A. A script (`scripts/live_picker_check.py`) drives the real picker from code on "Shuffle Test" through Remote Control; Derek checks the tray icon and notification by eye later | 2026-10-25 | Desktop control needs a click on Allow at the PC, and getting around that prompt would defeat it. The script checks the real Spotify writes, Undo and keep-order mode now; only the visuals wait for him. |
 | P5-6 | Release v0.5.0 | Derek typed "Tag v0.5.0": annotated tag on 166c11c, pushed from his PC (the cloud session can't push tags); the pre-release workflow built and published the zip and its SHA-256 | 2026-10-25 | The scripted picker check passed on "Shuffle Test" and the exe ran on his PC with Smart App Control on. |
 | P5-7 | Close M5 with #36 still open | A. Close M5, move #36 to M7; its two findings are #126 and #127, and the D14 card comes after a few days of real use | 2026-10-25 | Covered by the standing go to close each milestone and carry on (P5-2); real-use feedback suits M7 and the D14 picks feed M8. |
+| P6-01 | How True Shuffle is used | A tick box in the tray menu that true-shuffles the playlist already playing in the Spotify app; the covers window (#114, P6-05) moves to M8 | 2026-10-25 | Derek: "I just want an option I can toggle on for true shuffle from the drop down menu when listening to my spotify playlists normally on spotify". Playlists and their pictures are picked in Spotify itself. |
+| P6-01a | How the shuffled order is handed to Spotify | A. Send the song list directly (`PUT /me/player/play` with `uris`); nothing is added to the user's library. `MAX_SONGS` caps one play with a fair sample until the live test (P6-08) finds Spotify's real limit | 2026-10-25 | Derek: "nothing added to library less overhead incase people actually want to use the tool and not just me". A hidden helper playlist (B) was the other option. |
 
 ---
 
@@ -348,6 +350,8 @@ Recommendation: A, with B available as a private build for friends.
 Asked in the "Plan true shuffle playback feature" thread after v0.4.0. Derek asked for a Spotify-like view of his playlists with a "true shuffle" toggle that turns Spotify's shuffle off and plays songs in a fair random order without rewriting the playlist, and floated renaming the app to Spotify Plus, Spotify+ or TrueSpotify. The official docs were checked first (Rule 4): every Player endpoint is still available in development mode, play and shuffle need Premium for every user, and Spotify's terms forbid "Spotify" in an app name. Answers are in the log above; the plan is ROADMAP.md M6.
 
 Derek added two requirements on 2026-10-25, written into M6: each playlist shows its own Spotify cover picture, because pictures are easier to recognise than names (P6-05), and after turning the toggle on he can go back to the Spotify app and the playlist keeps playing there in the random order (P6-04).
+
+Later that day (P6-01) Derek chose a tray menu tick box over the player window, since he picks playlists, with their pictures, in Spotify itself. The covers window (P6-05, #114) moved to M8.
 
 ---
 
