@@ -301,7 +301,7 @@ def test_fast_mode_ignores_cancel_once_writing(
     assert outcome.result is Result.DONE  # stopping after the replace would leave it short
 
 
-def test_a_change_while_reading_stops_before_writing(
+def test_a_change_while_reading_is_read_again(
     fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
 ) -> None:
     playlist = fake.add_playlist("fakelist", songs(60))
@@ -314,8 +314,43 @@ def test_a_change_while_reading_stops_before_writing(
 
     outcome = shuffle_playlist(client, cache, "fakelist", Mode.FAST, quick())
 
+    assert outcome.result is Result.DONE
+    assert Counter(playlist.uris) == Counter(songs(61))  # shuffled what is there now
+
+
+def test_a_playlist_that_keeps_changing_while_read_stops_before_writing(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache
+) -> None:
+    playlist = fake.add_playlist("fakelist", songs(60))
+
+    def edit_every_read(call: Call) -> None:
+        if call.path.endswith("/items") and call.query.get("offset", ["0"])[0] == "0":
+            fake.edit("fakelist", [*playlist.uris, "spotify:track:new"])
+
+    fake.before_request = edit_every_read
+    sleeps: list[float] = []
+
+    outcome = shuffle_playlist(client, cache, "fakelist", Mode.FAST, quick(sleep=sleeps.append))
+
     assert (outcome.result, outcome.changed) == (Result.CHANGED_ELSEWHERE, False)
     assert fake.writes() == []
+    assert sleeps == [runner.SETTLE_SECONDS] * (runner.READ_TRIES - 1)
+
+
+@pytest.mark.parametrize("mode", [Mode.FAST, Mode.KEEP_ORDER])
+def test_lagging_reads_after_a_write_dont_stop_the_next_run(
+    fake: FakeSpotify, client: SpotifyClient, cache: PlaylistItemsCache, mode: Mode
+) -> None:
+    """The second live run (#31): run 2 began right after run 1's write and saw two
+    snapshot_ids, as if a read came from a server that hadn't caught up yet."""
+    fake.add_playlist("fakelist", songs(60))
+    fake.lagging_snapshot_reads = 1
+    fake.replies_name_versions_apart = True
+
+    first = shuffle_playlist(client, cache, "fakelist", mode, quick(check_every=10))
+    second = shuffle_playlist(client, cache, "fakelist", mode, quick(check_every=10))
+
+    assert (first.result, second.result) == (Result.DONE, Result.DONE)
 
 
 @pytest.mark.parametrize("mode", [Mode.FAST, Mode.KEEP_ORDER])

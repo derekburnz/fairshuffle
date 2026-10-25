@@ -73,6 +73,7 @@ class FakePlaylist:
     entries: list[Entry]
     editable: bool = True  # False: owned by someone else, so every call answers 403
     version: int = 1
+    stale_reads: int = 0  # GET /playlists/{id} reads still to answer with the old snapshot_id
 
     @property
     def snapshot_id(self) -> str:
@@ -115,6 +116,9 @@ class FakeSpotify:
     # As the real API did in the live test (#31): a write's reply names the new version with a
     # snapshot_id that GET /playlists/{id} never returns. Both still change with every edit.
     replies_name_versions_apart: bool = False
+    # As the second live run suggested: right after a change, this many GET /playlists/{id}
+    # reads still answer with the version before it, as a lagging read replica would.
+    lagging_snapshot_reads: int = 0
     _clock: itertools.count[int] = field(default_factory=lambda: itertools.count(1))
 
     def __post_init__(self) -> None:
@@ -156,6 +160,7 @@ class FakeSpotify:
         playlist = self.playlists[playlist_id]
         playlist.entries = [Entry(uri, self._stamp()) for uri in uris]
         playlist.version += 1
+        playlist.stale_reads = self.lagging_snapshot_reads
 
     def writes(self) -> list[Call]:
         return [call for call in self.calls if call.method != "GET"]
@@ -207,9 +212,13 @@ class FakeSpotify:
         return _error(405, "Method not allowed")
 
     def _playlist_object(self, playlist: FakePlaylist) -> dict[str, Any]:
+        snapshot = playlist.snapshot_id
+        if playlist.stale_reads > 0:
+            playlist.stale_reads -= 1
+            snapshot = f"fake-snapshot-{playlist.id}-{playlist.version - 1}"
         return {
             "id": playlist.id,
-            "snapshot_id": playlist.snapshot_id,
+            "snapshot_id": snapshot,
             "items": {"total": len(playlist.entries)},
         }
 
@@ -293,6 +302,7 @@ class FakeSpotify:
 
     def _changed(self, playlist: FakePlaylist, status: int) -> Reply:
         playlist.version += 1
+        playlist.stale_reads = self.lagging_snapshot_reads
         return _ok(status, {"snapshot_id": self._reply_snapshot(playlist)})
 
     def _reply_snapshot(self, playlist: FakePlaylist) -> str:

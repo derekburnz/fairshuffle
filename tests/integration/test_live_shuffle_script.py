@@ -191,18 +191,19 @@ def test_the_lock_is_taken_when_the_app_is_not_running(tmp_path: Path) -> None:
 
 
 def test_a_run_stopped_before_writing_is_not_put_back(
-    fake: FakeSpotify, client: SpotifyClient
+    fake: FakeSpotify, client: SpotifyClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pl = fake.add_playlist("fakelist", songs(30))
+    monkeypatch.setattr(runner, "SETTLE_SECONDS", 0)
     item_reads = [0]
 
-    def edit_during_the_runners_read(call: Call) -> None:
-        if call.method == "GET" and call.path.endswith("/items"):
+    def edit_during_the_runners_reads(call: Call) -> None:
+        if call.method == "GET" and call.path.endswith("/items") and not fake.writes():
             item_reads[0] += 1
-            if item_reads[0] == 3:  # the script read it twice; this is the runner's read
-                fake.edit("fakelist", songs(31))
+            if item_reads[0] >= 3:  # the script read it twice; these are the runner's tries
+                fake.edit("fakelist", [*pl.uris, "spotify:track:new"])
 
-    fake.before_request = edit_during_the_runners_read
+    fake.before_request = edit_during_the_runners_reads
     lines: list[str] = []
 
     passed = script.live_test(client, PlaylistItemsCache(), "fakelist", lines.append, pace=0)
@@ -210,4 +211,3 @@ def test_a_run_stopped_before_writing_is_not_put_back(
     assert not passed
     assert lines == [lines[0]] and "CHANGED_ELSEWHERE" in lines[0]
     assert fake.writes() == []
-    assert pl.uris == songs(31)
