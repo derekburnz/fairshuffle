@@ -14,6 +14,7 @@ from fairshuffle.ui.account import AccountController, AccountState, AccountStatu
 from fairshuffle.ui.picker import UNTITLED, PlaylistPicker, quoted
 from fairshuffle.ui.playlists import PlaylistController
 from fairshuffle.ui.shuffle import Action, Finished, ShuffleController
+from fairshuffle.ui.true_shuffle import ToggleState, ToggleStatus, TrueShuffleController
 
 TOOLTIP = "FairShuffle"
 # The completion notice. Spotify's own shuffle, or a sort other than Custom order, would hide the
@@ -23,6 +24,15 @@ PLAY_TIP = (
     "by Custom order."
 )
 UNDONE = "The order from before the shuffle is back."
+TRUE_SHUFFLE = "&True Shuffle"
+TRUE_SHUFFLE_TIP = (
+    "Play the playlist you have on in Spotify in a fair random order, without changing it. "
+    "Untick to go back to normal."
+)
+TRUE_SHUFFLE_BUSY = {
+    ToggleState.STARTING: "True Shuffle (starting\u2026)",
+    ToggleState.STOPPING: "True Shuffle (turning off\u2026)",
+}
 NOT_FINISHED = (
     "It may have changed. Open FairShuffle and press Undo to put back the order from before."
 )
@@ -89,6 +99,7 @@ class TrayIcon(QSystemTrayIcon):
         account: AccountController | None = None,
         playlists: PlaylistController | None = None,
         shuffles: ShuffleController | None = None,
+        true_shuffle: TrueShuffleController | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(placeholder_icon(), parent)
@@ -96,6 +107,7 @@ class TrayIcon(QSystemTrayIcon):
         self._account = account
         self._playlists = playlists
         self._shuffles = shuffles
+        self._true_shuffle = true_shuffle
         self._about_box: QMessageBox | None = None
         self._picker: PlaylistPicker | None = None
         self.setToolTip(TOOLTIP)
@@ -115,15 +127,25 @@ class TrayIcon(QSystemTrayIcon):
         self.picker_action = QAction("Shuffle a &playlist\u2026", self.menu)
         self.picker_action.triggered.connect(self.show_picker)
         self.picker_action.setVisible(False)
+        # A tick box: on, the playlist playing in Spotify carries on in a fair random order (M6).
+        self.true_shuffle_action = QAction(TRUE_SHUFFLE, self.menu)
+        self.true_shuffle_action.setCheckable(True)
+        self.true_shuffle_action.setToolTip(TRUE_SHUFFLE_TIP)
+        self.true_shuffle_action.triggered.connect(self._on_true_shuffle_action)
+        self.true_shuffle_action.setVisible(False)
         if account is not None:
             self.menu.addAction(self.status_action)
             self.menu.addAction(self.account_action)
             self.menu.addAction(self.playback_action)
             self.menu.addSeparator()
+            if true_shuffle is not None:
+                self.menu.addAction(self.true_shuffle_action)
+                true_shuffle.status_changed.connect(self.show_true_shuffle_status)
             if playlists is not None and shuffles is not None:
                 self.menu.addAction(self.picker_action)
-                self.menu.addSeparator()
                 shuffles.finished.connect(self.show_finished)
+            if true_shuffle is not None or (playlists is not None and shuffles is not None):
+                self.menu.addSeparator()
             account.status_changed.connect(self.show_account_status)
             self.show_account_status(account.status)
         self.about_action = QAction("&About FairShuffle", self.menu)
@@ -195,6 +217,7 @@ class TrayIcon(QSystemTrayIcon):
         self.picker_action.setVisible(
             signed_in and self._playlists is not None and self._shuffles is not None
         )
+        self.true_shuffle_action.setVisible(signed_in and self._true_shuffle is not None)
         if not signed_in and self._picker is not None:
             self._picker.hide()
         line = _STATUS_LINES[status.state]
@@ -207,6 +230,21 @@ class TrayIcon(QSystemTrayIcon):
         self.setToolTip(f"{TOOLTIP}\n{line}")
         if status.message:
             self.showMessage(TOOLTIP, status.message, QSystemTrayIcon.MessageIcon.Information, 5000)
+
+    def show_true_shuffle_status(self, status: ToggleStatus) -> None:
+        """Keep the tick box in step with the toggle, and pass on any message once."""
+        state = status.state
+        self.true_shuffle_action.setChecked(state in (ToggleState.STARTING, ToggleState.ON))
+        busy = state in (ToggleState.STARTING, ToggleState.STOPPING)
+        self.true_shuffle_action.setEnabled(not busy)
+        self.true_shuffle_action.setText(TRUE_SHUFFLE_BUSY.get(state, TRUE_SHUFFLE))
+        if status.message:
+            icon = (
+                QSystemTrayIcon.MessageIcon.Warning
+                if status.warning
+                else QSystemTrayIcon.MessageIcon.Information
+            )
+            self.showMessage(status.title or "True Shuffle", status.message, icon, 8000)
 
     def show_already_running(self) -> None:
         """Answer a second launch by pointing at this icon instead of adding another one."""
@@ -221,6 +259,10 @@ class TrayIcon(QSystemTrayIcon):
         """Take the icon out of the notification area, then end the app with exit code 0."""
         self.hide()
         self._quit_app()
+
+    def _on_true_shuffle_action(self, checked: bool) -> None:
+        if self._true_shuffle is not None:  # pragma: no branch  # only in the menu with one
+            self._true_shuffle.toggle(checked)
 
     def _on_account_action(self) -> None:
         account = self._account

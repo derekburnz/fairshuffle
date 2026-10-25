@@ -154,9 +154,11 @@ def play(
     context_uri: str | None = None,
     offset: int | None = None,
     uris: list[str] | None = None,
+    position_ms: int | None = None,
     device_id: str | None = None,
 ) -> None:
-    """Start playing a playlist (from offset, 0-based) or a list of track and episode URIs.
+    """Start playing a playlist (from offset, 0-based) or a list of track and episode URIs,
+    position_ms into the first song.
 
     Exactly one of context_uri and uris. Local files can't be played through the Web API, so
     their spotify:local: URIs are refused here rather than sent.
@@ -180,6 +182,10 @@ def play(
         if not all(isinstance(uri, str) and _PLAYABLE_URI.fullmatch(uri) for uri in uris):
             raise ValueError("Play takes only track and episode URIs.")
         body = {"uris": list(uris)}
+    if position_ms is not None:
+        if not _is_count(position_ms):
+            raise ValueError("position_ms is a whole number of milliseconds from 0.")
+        body["position_ms"] = position_ms
     _command(client, "PUT", "/me/player/play", params=_device_param(device_id), body=body)
 
 

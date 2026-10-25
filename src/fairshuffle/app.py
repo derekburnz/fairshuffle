@@ -28,6 +28,7 @@ from fairshuffle.ui.account import AccountController
 from fairshuffle.ui.playlists import PlaylistController
 from fairshuffle.ui.shuffle import ShuffleController
 from fairshuffle.ui.tray import TrayIcon
+from fairshuffle.ui.true_shuffle import TrueShuffleController
 
 APP_NAME = "FairShuffle"
 
@@ -233,7 +234,14 @@ def run() -> int:
     app.aboutToQuit.connect(account.shutdown)
     app.aboutToQuit.connect(instance.release)
     playlists = PlaylistController(account)
-    tray = TrayIcon(quit_app=app.quit, account=account, playlists=playlists, shuffles=shuffles)
+    true_shuffle = TrueShuffleController(account)
+    tray = TrayIcon(
+        quit_app=app.quit,
+        account=account,
+        playlists=playlists,
+        shuffles=shuffles,
+        true_shuffle=true_shuffle,
+    )
     instance.activation_requested.connect(tray.show_already_running)
     tray.show()
     account.start()  # resumes a saved sign-in without the browser

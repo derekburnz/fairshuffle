@@ -17,6 +17,7 @@ from fairshuffle.ui.account import AccountController
 from fairshuffle.ui.playlists import PlaylistController
 from fairshuffle.ui.shuffle import ShuffleController
 from fairshuffle.ui.tray import TrayIcon
+from fairshuffle.ui.true_shuffle import TrueShuffleController
 
 
 def read_log() -> str:
@@ -32,8 +33,15 @@ def tray_that_quits_once_running(
     account: AccountController | None = None,
     playlists: PlaylistController | None = None,
     shuffles: ShuffleController | None = None,
+    true_shuffle: TrueShuffleController | None = None,
 ) -> TrayIcon:
-    tray = TrayIcon(quit_app=quit_app, account=account, playlists=playlists, shuffles=shuffles)
+    tray = TrayIcon(
+        quit_app=quit_app,
+        account=account,
+        playlists=playlists,
+        shuffles=shuffles,
+        true_shuffle=true_shuffle,
+    )
     # Picks Quit from the menu as soon as the event loop is running.
     QTimer.singleShot(0, tray.quit_action.trigger)
     return tray
@@ -59,17 +67,22 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     accounts: list[AccountController | None] = []
     lists: list[PlaylistController | None] = []
     runs: list[ShuffleController | None] = []
+    toggles: list[TrueShuffleController | None] = []
 
     def record_tray(
         quit_app: Callable[[], None],
         account: AccountController | None = None,
         playlists: PlaylistController | None = None,
         shuffles: ShuffleController | None = None,
+        true_shuffle: TrueShuffleController | None = None,
     ) -> TrayIcon:
         accounts.append(account)
         lists.append(playlists)
         runs.append(shuffles)
-        created.append(tray_that_quits_once_running(quit_app, account, playlists, shuffles))
+        toggles.append(true_shuffle)
+        created.append(
+            tray_that_quits_once_running(quit_app, account, playlists, shuffles, true_shuffle)
+        )
         return created[-1]
 
     monkeypatch.setattr(app, "TrayIcon", record_tray)
@@ -78,6 +91,7 @@ def test_run_shows_the_tray_icon_and_exits_with_code_zero_on_quit(
     assert len(created) == 1
     assert not created[0].isVisible()
     assert isinstance(accounts[0], AccountController)  # the menu has the account items
+    assert isinstance(toggles[0], TrueShuffleController)  # and the True Shuffle tick box
     assert isinstance(lists[0], PlaylistController)  # and the playlist picker
     assert isinstance(runs[0], ShuffleController)  # with its Shuffle and Undo buttons
 
