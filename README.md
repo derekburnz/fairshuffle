@@ -4,11 +4,16 @@
 [![Secret scan](https://github.com/derekburnz/fairshuffle/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/derekburnz/fairshuffle/actions/workflows/secret-scan.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A Windows 11 tray app that gives a Spotify playlist a true Fisher-Yates shuffle. You pick one of your playlists, FairShuffle rewrites its order through the Spotify Web API, and you play it from track 1 with Spotify's own shuffle turned off.
+**A true shuffle player for Spotify.**
+
+A Windows 11 tray app that gives your Spotify playlists a true Fisher-Yates shuffle, two ways:
+
+- **True Shuffle:** while a playlist plays in the Spotify app, tick True Shuffle in FairShuffle's tray menu. The rest of the playlist carries on in a fair random order in Spotify itself, and the playlist is never changed.
+- **Shuffle a playlist:** FairShuffle rewrites a playlist's saved order through the Spotify Web API, so you can play it from track 1 with Spotify's own shuffle turned off, on any device.
 
 ## Why
 
-Spotify's shuffle is not a plain random shuffle, and people with large playlists notice the same songs coming up again and again. FairShuffle sidesteps it: every order of the playlist is equally likely, and the order is written into the playlist itself, so it works on every device you play from.
+Spotify's shuffle is not a plain random shuffle, and people with large playlists notice the same songs coming up again and again. FairShuffle sidesteps it: every order of the playlist is equally likely. True Shuffle hands that order straight to the Spotify app, and Shuffle a playlist writes it into the playlist itself, so it works on every device you play from.
 
 ## Status
 
@@ -25,6 +30,8 @@ Milestone M3 (v0.3.0) adds the playlist picker. Left-click the tray icon, or pic
 Milestone M4 (v0.4.0) adds the shuffle engine: a Fisher-Yates shuffle with Windows' secure random source, a backup of the order before every shuffle, two ways to write the new order (fast, which rewrites the list in about 2 seconds, or keep order, which moves one song at a time so "date added" and local files survive) and a read-back check plus Undo. It was checked against the real Spotify on a test playlist: 10 shuffles and an Undo, all verified.
 
 Milestone M5 (v0.5.0) makes it usable from the tray: Shuffle, Undo and Cancel in the picker, a "Keep date added (slower)" box, questions before anything is lost and a notice when the shuffle is done ([screenshot](docs/screenshots/picker-shuffle.png)). It also adds a FairShuffle.exe build, published as a pre-release zip.
+
+Milestone M6 (v0.6.0) adds **True Shuffle**, a tick box in the tray menu. It turns Spotify's shuffle off and plays the playlist you have on in a Fisher-Yates order, keeping the song that is playing, without changing the playlist or adding anything to your library.
 
 The [roadmap](docs/planning/ROADMAP.md) lists every milestone and issue.
 
@@ -60,14 +67,29 @@ Open the playlist in Spotify, **turn Spotify's shuffle off** and start from **tr
 
 Pick the playlist and press **Undo** to put back the order from before its last shuffle. Undo is greyed out for a playlist FairShuffle has no backup of. If songs were added since the shuffle, a fast Undo asks before removing them, and if a shuffle stops partway (a lost connection, say), FairShuffle offers Undo straight away.
 
+### True Shuffle (play in a fair order without changing the playlist)
+
+True Shuffle needs Spotify Premium, because Spotify only lets apps control playback for Premium accounts.
+
+1. **The first time only:** if you signed in with v0.5.0 or older, pick **Allow playback control…** in the tray menu and approve FairShuffle in the browser once more. It asks for two more permissions: seeing what is playing and controlling playback.
+2. In the Spotify app (on this PC or any device), play one of your playlists as usual. It must be one you made or collaborate on, because Spotify only lets apps read the songs of those.
+3. Right-click the FairShuffle icon and tick **True Shuffle**. The song that is playing carries on from the same point, Spotify's shuffle turns off, and the rest of the playlist follows in a fair random order. A notice says how many songs are in the order.
+4. Go back to Spotify and listen. Next and Previous follow the true shuffle order, and it keeps playing with FairShuffle closed to the tray.
+5. To go back to normal, untick **True Shuffle**. Spotify's shuffle goes back to how you had it, and the playlist carries on from the song that is playing.
+
+The order is sent to Spotify as a list of songs to play, so nothing is added to your library and the playlist itself is not changed. Local files can't be played this way, so they are left out, and the notice says how many. A very long playlist plays the song that is on plus a fair random pick of the rest; tick True Shuffle again for a fresh pick. If you pick something else in Spotify, the tick box clears itself within a minute.
+
 ### If something goes wrong
 
 - **"Spotify app not set up yet"**: the Client ID is missing; check step 2 above.
 - **The sign-in page says the redirect URI is invalid**: the Redirect URI in the Spotify dashboard and in `.env` must both be exactly `http://127.0.0.1:8888/callback`.
+- **True Shuffle says "Open the Spotify app…"**: Spotify only takes commands for a device that is active, so open Spotify and press play first.
+- **True Shuffle says "Play one of your playlists in Spotify first"**: it works on the playlist that is playing now, not on albums, Liked Songs or podcasts.
+- **True Shuffle says Premium is needed**: playback control is a Premium feature of Spotify's Web API, for every user.
 - **Windows blocks FairShuffle.exe**: the prototype isn't code signed yet, so Smart App Control or SmartScreen may stop it. Running from source works in the meantime.
 - **Anything else**: the log is in `%LOCALAPPDATA%\FairShuffle\logs\fairshuffle.log`. Tokens, codes and your home folder are masked before anything is written there.
 
-[`docs/architecture.md`](docs/architecture.md) describes the parts and the sign-in and shuffle flows.
+[`docs/architecture.md`](docs/architecture.md) describes the parts and the sign-in, shuffle and True Shuffle flows.
 
 ## Developer setup
 

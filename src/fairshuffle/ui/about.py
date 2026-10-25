@@ -16,6 +16,7 @@ def about_text() -> str:
     """The box's rich text. Its one link is the fixed repo URL; nothing else is clickable."""
     return (
         f"<b>FairShuffle {html.escape(__version__)}</b>"
+        "<p>A true shuffle player for Spotify.</p>"
         "<p>A true Fisher-Yates shuffle for your Spotify playlists.</p>"
         "<p>Copyright (c) 2026 Derek Burns<br>Released under the MIT License.</p>"
         f'<p><a href="{REPO_URL}">{REPO_URL}</a></p>'
