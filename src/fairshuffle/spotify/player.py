@@ -46,6 +46,9 @@ _PLAYABLE_URI = re.compile(r"spotify:(track|episode):[0-9A-Za-z]{1,64}")
 _CONTEXT_URI = re.compile(r"spotify:playlist:[0-9A-Za-z]{1,64}")
 _DEVICE_ID = re.compile(r"[0-9A-Za-z_-]{1,128}")
 _REPEAT_STATES = frozenset({"off", "track", "context"})
+# A sanity bound on one play request, far above any list a person plays. The real limit is
+# undocumented; the live test (#117) finds it, and the session (shuffle/session.py) stays under it.
+MAX_PLAY_URIS = 10_000
 
 NO_DEVICE = (
     "Open the Spotify app on this PC (or any device) and play something, so FairShuffle has a "
@@ -111,7 +114,7 @@ def playback_state(client: SpotifyClient) -> PlaybackState | None:
         is_playing=data.get("is_playing") is True,
         shuffle=data.get("shuffle_state") is True,
         repeat=repeat if repeat in _REPEAT_STATES else "off",
-        context_uri=context_uri if isinstance(context_uri, str) else None,
+        context_uri=context_uri if _is_context_uri(context_uri) else None,
         item=_now_playing(data.get("item")),
         progress_ms=progress if _is_count(progress) else None,
     )
@@ -166,14 +169,16 @@ def play(
             raise ValueError("That isn't a Spotify playlist URI.")
         body = {"context_uri": context_uri}
         if offset is not None:
-            if offset < 0:
-                raise ValueError("The offset counts from 0.")
+            if not _is_count(offset):
+                raise ValueError("The offset is a whole number counting from 0.")
             body["offset"] = {"position": offset}
     else:
         if offset is not None:  # Spotify takes an offset only with a playlist or album
             raise ValueError("An offset needs a playlist.")
-        if not uris or not all(_PLAYABLE_URI.fullmatch(uri) for uri in uris or ()):
-            raise ValueError("Play needs at least one track or episode URI, and nothing else.")
+        if not uris or len(uris) > MAX_PLAY_URIS:
+            raise ValueError(f"Play needs 1 to {MAX_PLAY_URIS} URIs.")
+        if not all(isinstance(uri, str) and _PLAYABLE_URI.fullmatch(uri) for uri in uris):
+            raise ValueError("Play takes only track and episode URIs.")
         body = {"uris": list(uris)}
     _command(client, "PUT", "/me/player/play", params=_device_param(device_id), body=body)
 
@@ -295,11 +300,20 @@ def best_image(images: Any, size: int = 300) -> str | None:
     return max(usable)[1]
 
 
-_IMAGE_HOST = re.compile(r"https://([a-z0-9-]+\.)*(scdn\.co|spotifycdn\.com)/[^\s]*")
+# The path is printable ASCII with no backslash, since the UI hands the link to Qt to fetch.
+_IMAGE_HOST = re.compile(r"https://([a-z0-9-]+\.)*(scdn\.co|spotifycdn\.com)/[!-\[\]-~]*")
 
 
 def _is_image_url(url: str) -> bool:
     return len(url) <= 2_000 and _IMAGE_HOST.fullmatch(url) is not None
+
+
+def _is_context_uri(value: Any) -> TypeGuard[str]:
+    """Any playlist, album or artist URI: playing one of those is how a context shows up."""
+    return isinstance(value, str) and _ANY_CONTEXT_URI.fullmatch(value) is not None
+
+
+_ANY_CONTEXT_URI = re.compile(r"spotify:(playlist|album|artist|show|collection):[0-9A-Za-z:]{1,80}")
 
 
 def _text(value: Any) -> str | None:

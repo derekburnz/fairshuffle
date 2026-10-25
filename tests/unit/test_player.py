@@ -81,7 +81,7 @@ def test_the_state_tolerates_odd_fields(
             "device": "not an object",
             "shuffle_state": "yes",
             "repeat_state": "sometimes",
-            "context": None,
+            "context": {"uri": "javascript:alert(1)"},
             "item": {"type": "ad"},
             "is_playing": 1,
             "progress_ms": -5,
@@ -237,6 +237,9 @@ def test_pause_resume_next_and_previous(fake: FakePlayer, client: SpotifyClient)
         {"context_uri": "spotify:album:fakealbum1"},
         {"context_uri": "https://evil.example/playlist"},
         {"context_uri": PLAYLIST, "offset": -1},
+        {"context_uri": PLAYLIST, "offset": True},
+        {"context_uri": PLAYLIST, "offset": 1.5},
+        {"uris": ["spotify:track:fakesong1"] * (player.MAX_PLAY_URIS + 1)},
         {"uris": []},
         {"uris": ["spotify:local:Artist:Album:Title:180"]},  # local files can't be played
         {"uris": SONGS, "offset": 1},
@@ -358,6 +361,9 @@ def test_commands_log_the_route_but_never_the_device(
         ([{"url": "http://i.scdn.co/image/plain-http", "width": 640}], None),
         ([{"url": "https://evil.example/i.scdn.co/x", "width": 640}], None),
         ([{"url": "https://scdn.co.evil.example/x", "width": 640}], None),
+        ([{"url": "https://i.scdn.co/image/x\x00y", "width": 640}], None),
+        ([{"url": "https://i.scdn.co/image\\x", "width": 640}], None),
+        ([{"url": "https://i.scdn.co/image/caf\u00e9", "width": 640}], None),
         (["not an object", {"width": 640}], None),
     ],
 )
