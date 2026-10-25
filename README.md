@@ -22,7 +22,9 @@ Milestone M2 (v0.2.0) adds signing in to Spotify from the tray menu, which shows
 
 Milestone M3 (v0.3.0) adds the playlist picker. Left-click the tray icon, or pick **Shuffle a playlist…** in its menu, and a small window lists every playlist you own or collaborate on, with item counts, a search box and Refresh ([screenshot](docs/screenshots/picker-window.png)). Playlists you only follow are left out, because Spotify only lets their owner and collaborators reorder them.
 
-The shuffle itself arrives in M4. The [roadmap](docs/planning/ROADMAP.md) lists every milestone and issue.
+Milestone M4 (v0.4.0) adds the shuffle engine: a Fisher-Yates shuffle with Windows' secure random source, a backup of the order before every shuffle, two ways to write the new order (fast, which rewrites the list in about 2 seconds, or keep order, which moves one song at a time so "date added" and local files survive) and a read-back check plus Undo. It was checked against the real Spotify on a test playlist: 10 shuffles and an Undo, all verified. There is no Shuffle button yet; the picker's Shuffle and Undo buttons arrive in M5.
+
+The [roadmap](docs/planning/ROADMAP.md) lists every milestone and issue.
 
 ## How it will work
 
