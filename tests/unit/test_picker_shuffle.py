@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from fakes.ui_fakes import FakeAccount, HeldJobs, playlist
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 
@@ -390,3 +391,59 @@ def test_a_fast_undo_note_follows_the_done_line() -> None:
     finished = Finished(Action.UNDO, playlist(1, "Mix"), Mode.FAST, outcome)
 
     assert finished_text(finished) == f"Put back the order of “Mix” from before the shuffle. {note}"
+
+
+HOSTILE = '<img src="file:///C:/x.png"><b>Bold</b>'
+
+
+def test_a_name_that_looks_like_html_stays_text_in_the_new_screens(
+    qtbot: QtBot,
+    account: FakeAccount,
+    jobs: HeldJobs,
+    runs: Runs,
+    dialogs: Dialogs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A collaborator can name a playlist; the status line and dialogs show it as text."""
+    monkeypatch.setattr("fairshuffle.ui.playlists.user_id", lambda _client: "fakeuser")
+    monkeypatch.setattr(
+        "fairshuffle.ui.playlists.list_editable_playlists",
+        lambda _client, _owner: [playlist(1, HOSTILE)],
+    )
+    lists = PlaylistController(account, runner=jobs)  # type: ignore[arg-type]
+    shuffles = ShuffleController(account, runner=jobs)  # type: ignore[arg-type]
+    window = PlaylistPicker(account, lists, shuffles)  # type: ignore[arg-type]
+    qtbot.addWidget(window)
+    lists.refresh()
+    jobs.release()
+    runs.answer(Outcome(Result.NEEDS_CONFIRM, message="Fast mode would remove 1.", losses=1))
+    dialogs.answers.append(2)
+
+    window.shuffle_button.click()
+    assert window.status_label.textFormat() is Qt.TextFormat.PlainText
+    assert HOSTILE in window.status_label.text()
+    jobs.release()
+
+    assert HOSTILE in dialogs.asked[0][0]  # the title; choose() keeps the body plain text
+    window.hide()
+
+
+def test_the_dialog_shows_its_text_as_plain_text(
+    picker: PlaylistPicker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from fairshuffle.ui import picker as picker_module
+
+    seen: list[QMessageBox] = []
+
+    def press_escape(box: QMessageBox) -> int:
+        seen.append(box)
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", press_escape)
+    answer = picker_module.choose(picker, HOSTILE, HOSTILE, ["&Undo now", "&Leave it"], default=0)
+
+    assert answer == 1  # nothing clicked counts as the last, safe button
+    assert seen[0].textFormat() is Qt.TextFormat.PlainText
+    assert seen[0].text() == HOSTILE

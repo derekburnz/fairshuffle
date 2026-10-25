@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 from fairshuffle.shuffle.runner import Result
 from fairshuffle.ui.about import build_about_box
 from fairshuffle.ui.account import AccountController, AccountState, AccountStatus
-from fairshuffle.ui.picker import UNTITLED, PlaylistPicker
+from fairshuffle.ui.picker import UNTITLED, PlaylistPicker, quoted
 from fairshuffle.ui.playlists import PlaylistController
 from fairshuffle.ui.shuffle import Action, Finished, ShuffleController
 
@@ -23,6 +23,9 @@ PLAY_TIP = (
     "by Custom order."
 )
 UNDONE = "The order from before the shuffle is back."
+NOT_FINISHED = (
+    "It may have changed. Open FairShuffle and press Undo to put back the order from before."
+)
 
 # For each account state: the greyed-out line at the top of the menu, then the account action's
 # label and what it does (None hides the action).
@@ -159,12 +162,19 @@ class TrayIcon(QSystemTrayIcon):
         self._picker.open()
 
     def show_finished(self, finished: Finished) -> None:
-        """The completion notice: a toast once a shuffle or an Undo has changed the playlist.
-        Anything else is said in the picker, which also asks when there is a choice."""
+        """The completion notice: a toast once a shuffle or an Undo has changed the playlist, or
+        when one stopped after it may have. The picker says the rest and asks when there is a
+        choice, but it can be hidden (signed out mid-run, say), and Undo must not go unnoticed.
+        """
         outcome = finished.outcome
-        if outcome.result is not Result.DONE or not outcome.changed:
+        if not outcome.changed:
             return
-        name = finished.playlist.name or UNTITLED
+        name = quoted(finished.playlist.name or UNTITLED)
+        what = "shuffle" if finished.action is Action.SHUFFLE else "Undo"
+        if outcome.result is not Result.DONE:
+            title, text = f"The {what} of {name} didn't finish", NOT_FINISHED
+            self.showMessage(title, text, QSystemTrayIcon.MessageIcon.Warning, 10000)
+            return
         if finished.action is Action.SHUFFLE:
             title, text = f"Shuffled {name}", PLAY_TIP
         else:

@@ -266,3 +266,14 @@ def test_undo_is_offered_once_a_backup_exists(controller: ShuffleController) -> 
 
     assert controller.has_backup("fakeplaylist1")
     assert not controller.has_backup("fakeplaylist2")
+
+
+def test_a_backups_folder_that_cant_be_listed_hides_undo(
+    controller: ShuffleController, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(_playlist_id: str) -> None:
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(backups, "newest", refuse)
+
+    assert not controller.has_backup("fakeplaylist1")

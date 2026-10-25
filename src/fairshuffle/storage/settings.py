@@ -38,7 +38,7 @@ def load() -> Settings:
         data: Any = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError("not an object")
-    except OSError, ValueError:
+    except OSError, ValueError, RecursionError:  # RecursionError: deeply nested JSON
         # The OS message can quote the path, which holds the Windows user name.
         log.warning("The settings file couldn't be read; using the defaults")
         return Settings()

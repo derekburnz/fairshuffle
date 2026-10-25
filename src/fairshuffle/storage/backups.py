@@ -101,7 +101,7 @@ def load(path: Path) -> Backup:
             raise ValueError("too big")
         data: Any = json.loads(path.read_text(encoding="utf-8"))
         return _from_json(data)
-    except OSError, ValueError, KeyError, TypeError:
+    except OSError, ValueError, KeyError, TypeError, RecursionError:  # last: deeply nested JSON
         raise BackupError("A backup file couldn't be read.") from None
 
 

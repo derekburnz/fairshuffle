@@ -58,3 +58,11 @@ def test_a_failed_save_is_logged_without_the_path(
     assert not settings.save(Settings(keep_date_added=True))
     assert caplog.messages == ["Saving the settings failed"]
     assert settings.load() == Settings()
+
+
+def test_deeply_nested_json_gives_the_defaults() -> None:
+    # json.loads raises RecursionError, not ValueError, on deep nesting; the app must still start.
+    settings_file().parent.mkdir(parents=True)
+    settings_file().write_text("[" * 99_000, encoding="utf-8")
+
+    assert settings.load() == Settings()

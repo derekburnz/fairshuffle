@@ -123,6 +123,9 @@ class ShuffleController(QObject):
             return backups.newest(playlist_id) is not None
         except ValueError:  # not a Spotify ID, so FairShuffle never backed it up
             return False
+        except OSError:  # the backups folder can't be listed; logged without its path
+            log.warning("Couldn't look for a backup")
+            return False
 
     def shuffle(
         self, playlist: Playlist, mode: Mode | None = None, allowed_losses: int = 0

@@ -115,14 +115,14 @@ def test_shuffle_then_undo_from_the_picker(
 
     assert Counter(playlist.uris) == Counter(SONGS)
     assert playlist.uris != SONGS
-    assert toasts == [("Shuffled Road Trip", PLAY_TIP)]
+    assert toasts == [("Shuffled \u201cRoad Trip\u201d", PLAY_TIP)]
     assert picker.undo_button.isEnabled()
 
     picker.undo_button.click()
     jobs.release()
 
     assert playlist.uris == SONGS
-    assert toasts[-1][0] == "Put back Road Trip"
+    assert toasts[-1][0] == "Put back \u201cRoad Trip\u201d"
 
 
 def test_keep_order_from_the_box_keeps_every_date_added(

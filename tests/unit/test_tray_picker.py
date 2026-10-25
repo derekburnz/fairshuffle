@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 from fairshuffle.shuffle.runner import Mode, Outcome, Result
 from fairshuffle.ui.playlists import PlaylistController
 from fairshuffle.ui.shuffle import Action, Finished, ShuffleController
-from fairshuffle.ui.tray import PLAY_TIP, UNDONE, TrayIcon
+from fairshuffle.ui.tray import NOT_FINISHED, PLAY_TIP, UNDONE, TrayIcon
 
 
 @pytest.fixture
@@ -145,7 +145,7 @@ def test_a_finished_shuffle_tells_how_to_play_it(
 ) -> None:
     finish(tray, Action.SHUFFLE, Outcome(Result.DONE, changed=True))
 
-    assert toasts == [("Shuffled Road Trip", PLAY_TIP)]
+    assert toasts == [("Shuffled \u201cRoad Trip\u201d", PLAY_TIP)]
     assert "track 1" in PLAY_TIP and "shuffle off" in PLAY_TIP and "Custom order" in PLAY_TIP
 
 
@@ -155,14 +155,14 @@ def test_a_finished_undo_says_the_order_is_back(
     note = "2 local files or songs Spotify no longer has couldn't be put back."
     finish(tray, Action.UNDO, Outcome(Result.DONE, changed=True, message=note))
 
-    assert toasts == [("Put back Road Trip", f"{UNDONE} {note}")]
+    assert toasts == [("Put back \u201cRoad Trip\u201d", f"{UNDONE} {note}")]
 
 
 @pytest.mark.parametrize(
     "outcome",
     [
         Outcome(Result.DONE, message="The playlist was already in that order."),
-        Outcome(Result.FAILED, changed=True, message="Cut off."),
+        Outcome(Result.FAILED, message="Spotify is busy. Nothing was changed."),
         Outcome(Result.NEEDS_CONFIRM, losses=2),
         Outcome(Result.CANCELLED),
     ],
@@ -182,4 +182,24 @@ def test_the_notice_follows_the_controllers_finished_signal(
     outcome = Outcome(Result.DONE, changed=True)
     tray._shuffles.finished.emit(Finished(Action.SHUFFLE, playlist(2, "Focus"), Mode.FAST, outcome))
 
-    assert toasts == [("Shuffled Focus", PLAY_TIP)]
+    assert toasts == [("Shuffled \u201cFocus\u201d", PLAY_TIP)]
+
+
+@pytest.mark.parametrize(("action", "what"), [(Action.SHUFFLE, "shuffle"), (Action.UNDO, "Undo")])
+@pytest.mark.parametrize("result", [Result.FAILED, Result.NOT_VERIFIED, Result.CANCELLED])
+def test_a_run_that_stopped_after_writing_points_at_undo(
+    tray: TrayIcon, toasts: list[tuple[str, str]], action: Action, what: str, result: Result
+) -> None:
+    # The picker may be hidden (signed out mid-run), so the tray says it too.
+    finish(tray, action, Outcome(result, changed=True, message="Cut off."))
+
+    assert toasts == [(f"The {what} of \u201cRoad Trip\u201d didn't finish", NOT_FINISHED)]
+
+
+def test_a_long_name_is_cut_in_the_notice(tray: TrayIcon, toasts: list[tuple[str, str]]) -> None:
+    long = Finished(
+        Action.SHUFFLE, playlist(1, "y" * 100), Mode.FAST, Outcome(Result.DONE, changed=True)
+    )
+    tray.show_finished(long)
+
+    assert toasts[0][0] == "Shuffled \u201c" + "y" * 59 + "\u2026\u201d"
