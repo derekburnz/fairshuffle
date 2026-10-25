@@ -85,7 +85,8 @@ def start(
 
     The song on now stays on, at the same point, and the rest of the playlist follows in a
     Fisher-Yates order. Raises NoActiveDevice, DeviceRestricted, PremiumRequired, NothingToPlay
-    or another SpotifyError, in each case before playback changes.
+    or another SpotifyError. A failure before the play leaves playback as it was; one during the
+    play puts Spotify's shuffle setting back as the user had it.
     """
     device = player.controllable_device(client)  # first, so a closed app costs nothing
     state = player.playback_state(client)
@@ -110,7 +111,11 @@ def start(
         device_id=device.id,
         confirmed=False,
     )
-    confirmed = _play_and_confirm(client, session, keep_ms, sleep)
+    try:
+        confirmed = _play_and_confirm(client, session, keep_ms, sleep)
+    except SpotifyError:
+        _put_shuffle_back(client, session)
+        raise
     if state is not None and not state.is_playing:
         player.pause(client, device.id)  # ticked while paused: ready to go, but not playing yet
     log.info(
@@ -206,6 +211,16 @@ def _play_and_confirm(
         player.play(client, uris=songs, position_ms=position_ms, device_id=device_id)
     log.warning("Spotify didn't confirm the true shuffle order in time")
     return False
+
+
+def _put_shuffle_back(client: SpotifyClient, session: Session) -> None:
+    """Best effort after a failed play: the user's own shuffle setting as it was."""
+    if not session.shuffle_was_on:
+        return
+    try:
+        player.set_shuffle(client, True, session.device_id)
+    except SpotifyError:
+        log.warning("Spotify's shuffle couldn't be put back after a failed start")
 
 
 def _first_song_on(state: player.PlaybackState, session: Session) -> bool:

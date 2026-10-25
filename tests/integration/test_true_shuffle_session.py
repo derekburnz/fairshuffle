@@ -21,7 +21,7 @@ from fairshuffle.shuffle import session as true_shuffle
 from fairshuffle.shuffle.engine import shuffled
 from fairshuffle.spotify import player
 from fairshuffle.spotify.client import SpotifyClient, new_session
-from fairshuffle.spotify.errors import NoActiveDevice, PremiumRequired
+from fairshuffle.spotify.errors import NoActiveDevice, PremiumRequired, SpotifyError
 
 SEED = 7
 SOURCE = "spotify:playlist:fakeplaylist1"
@@ -266,6 +266,21 @@ def test_a_free_account_is_told_before_playback_changes(
         start(client)
 
     assert app.shuffle is True  # the user's own shuffle setting is untouched
+
+
+def test_a_failed_play_puts_spotifys_shuffle_back(
+    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refused(*_args: object, **_kwargs: object) -> None:
+        raise SpotifyError("Spotify had a problem (502).")
+
+    monkeypatch.setattr(player, "play", refused)
+
+    with pytest.raises(SpotifyError):
+        start(client)
+
+    assert app.shuffle is True  # back to how the user had it
+    assert app.context_uri == SOURCE
 
 
 def test_turning_it_off_goes_back_to_the_playlist_from_the_song_playing_now(
