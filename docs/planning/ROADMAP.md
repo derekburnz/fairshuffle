@@ -1,6 +1,6 @@
 # FairShuffle: final roadmap (Stage C)
 
-Status: **APPROVED by Derek on 2026-10-09.** Tooling cards D18 to D24 answered 2026-10-13. Stage C is complete. Drafted 2026-10-09 from the Stage B answers (D1 to D8 in `DECISIONS.md`), the Spotify API re-check of 2026-10-08 and a spot check on 2026-10-09. Nothing has been created on GitHub, installed or coded.
+Status: **APPROVED by Derek on 2026-10-09.** Tooling cards D18 to D24 answered 2026-10-13. Stage C is complete. **Updated 2026-10-25:** D26 added the true shuffle player as M6 (v0.6.0) and D28 renumbered the later milestones: bug fixes and hardening is M7 (v0.7.x), visual polish M8 (v0.9.0) and the final project M9 (v1.0.0). Drafted 2026-10-09 from the Stage B answers (D1 to D8 in `DECISIONS.md`), the Spotify API re-check of 2026-10-08 and a spot check on 2026-10-09. Nothing has been created on GitHub, installed or coded.
 
 When Derek approves, this file replaces sections 3 and 8 of `PROJECT_PLAN.md` (those sections get a one-line pointer here) and Phase 0 can start.
 
@@ -10,7 +10,7 @@ When Derek approves, this file replaces sections 3 and 8 of `PROJECT_PLAN.md` (t
 2. New decisions from Stage C (D18 to D25)
 3. Architecture with real module names (replaces PROJECT_PLAN section 3)
 4. Phase 0 checklist (setup, no issues yet)
-5. Milestones and issue list (Phases 1 to 8)
+5. Milestones and issue list (Phases 1 to 9)
 6. Starter-kit changes
 7. Facts this roadmap relies on, and when they were checked
 
@@ -279,40 +279,55 @@ Goal: shuffle a playlist correctly and safely.
 | P5-04 | docs: how to use FairShuffle | README usage section | A first-time reader can sign in and shuffle by following it |
 | P5-05 | chore: real-use notes and D14 backlog picks | Derek uses it for a few days; Claude helps write issues | Issues filed; D14 logged |
 
-### M6: Bug fixes and hardening (v0.6.x)
+### M6: True shuffle player (v0.6.0)
 
-Bugs from M5 are added here as they are found, each with a failing test first.
-
-| ID | Title | Description | Acceptance criteria |
-|----|-------|-------------|---------------------|
-| P6-01 | fix: playlist edited during a shuffle | Snapshot mismatch handling | Simulator test edits mid-run; the app stops, verifies and offers restore |
-| P6-02 | fix: network drop and PC sleep mid-run | Resume or restore after a broken connection | Simulator test cuts the connection at move 100 of 300; final state is correct or restored |
-| P6-03 | fix: 429 storms | Long or repeated `Retry-After`, quota errors | User sees "Spotify asked us to slow down" with time left; no tight retry loop |
-| P6-04 | fix: lapsed Premium and other 403s | Clear messages for each 403 cause | Spotify's current 403 bodies are checked first (Rule 4); each case has a test and a message |
-| P6-05 | test: large playlist (1,000+ items) | Performance and call count | Planner and runner tests at 1,000 and 10,000 items within agreed limits |
-| P6-06 | chore: full log and leak review | security-reviewer over logs, fixtures and history | PASS recorded in the issue |
-
-### M7: Visual polish (v0.9.0)
+Added 2026-10-25 by D26. Goal: play any playlist in a fair random order from FairShuffle without changing the playlist. FairShuffle stays a remote control: the user's Spotify app plays the audio and FairShuffle sends it commands through the Web API Player endpoints (Premium only for every user). Rule 4 facts for this milestone are in section 7.
 
 | ID | Title | Description | Acceptance criteria |
 |----|-------|-------------|---------------------|
-| P7-01 | feat(ui): original tray icon | ui-designer offers 2 or 3 options as a card | Light and dark variants in `assets/icons/`; nothing resembling the Spotify logo |
-| P7-02 | feat(ui): follow Windows light and dark mode | `theme.py` | Switching Windows theme updates the icon and windows |
-| P7-03 | feat(ui): settings window and menu wording | Options from D14 picks | Derek approves each screen on a card |
-| P7-04 | feat(ui): progress window polish | Clear progress, time left, cancel | Derek approves the screen |
-| P7-05 | fix(ui): accessibility pass | Keyboard, contrast, screen reader names | Every control reachable by keyboard and named for Narrator |
-| P7-06 | docs: screenshots and demo GIF | For the README | Committed under `docs/screenshots/` with no personal data visible |
+| P6-01 | chore: player cards and Rule 4 re-check | Decision Cards for the playback method (a `uris` list to `PUT /me/player/play`, a private scratch playlist played from track 1, or the queue) and the player window design (`ui-designer` mockups); re-check the Player endpoints | Both cards logged; `spotify-api-notes` has a dated Player section |
+| P6-02 | feat(auth): playback scopes | Add `user-read-playback-state` and `user-modify-playback-state`; a saved sign-in without them asks the user to sign in once more | Old sign-in without the scopes leads to one clear re-sign-in prompt; tests cover both cases |
+| P6-03 | feat(spotify): player client | `spotify/player.py`: devices, playback state, shuffle on or off, play, pause, next, previous; no active device, not Premium and restricted device errors | Every call has a test against a fake player in `tests/fakes/`; no real network |
+| P6-04 | feat(shuffle): true shuffle session | `shuffle/session.py`: a Fisher-Yates order from `engine.py`, Spotify's shuffle turned off, our order started by the P6-01 method, state read back because Spotify does not guarantee the order of player commands | On the fake: shuffle is off before the first song plays, the playlist itself is unchanged, turning the toggle off returns to normal play. Derek's ask (2026-10-25): after turning the toggle on he can switch to the Spotify app and the whole playlist keeps playing there in our order, with Next and Previous in Spotify following it, even with FairShuffle closed to the tray |
+| P6-05 | feat(ui): player window | `ui/player.py`: playlists shown with the cover picture each one has in Spotify (Derek's ask, 2026-10-25: pictures are easier to recognise than names; from the `images` field of `GET /me/playlists`, fetched fresh because the URLs expire within a day), now playing (cover art, title, artist), play, pause, next, previous and our own true shuffle toggle; Spotify attribution and an "Open Spotify" link; its own look, not a Spotify copy | Derek approves the screen on a card; opens from the tray; each playlist shows its own Spotify cover, with a plain placeholder when it has none; meets Spotify Developer Policy II.5 and III.11 |
+| P6-06 | feat(ui): player states | No Spotify app open, not Premium, nothing playing, restricted device | Each state has a message and a test |
+| P6-07 | docs: player docs and tagline | README and About gain the D27 tagline "a true shuffle player for Spotify"; `architecture.md` gains the player flow; `spotify-setup.md` explains the second sign-in | A first-time reader can start a true shuffle by following the README |
+| P6-08 | chore: live player test | On Derek's PC with his Spotify app and the "Shuffle Test" playlist: toggle, skip, pause, the largest `uris` list that works | Results logged in the PR; first real playlist only after Derek asks |
 
-### M8: Final project (v1.0.0)
+### M7: Bug fixes and hardening (v0.7.x)
+
+Bugs from M5 and M6 are added here as they are found, each with a failing test first.
 
 | ID | Title | Description | Acceptance criteria |
 |----|-------|-------------|---------------------|
-| P8-01 | chore: D15, D16 and D17 | Distribution, signing, Client ID in release builds | All three logged |
-| P8-02 | feat: first-run Client ID setup | Only if D17 is A | New user enters their own Client ID once; stored in settings, never in the repo |
-| P8-03 | ci: release workflow | Tagged build attaches the D15 format to a GitHub Release | `v1.0.0` tag (Derek approves) publishes the release |
-| P8-04 | docs: final README, CHANGELOG and privacy note | Demo GIF, how it works, architecture diagram, bring-your-own-Client-ID guide | A fresh Windows user installs and shuffles by following the README |
-| P8-05 | chore: repo presentation | Description, topics, social preview, pin on profile | Done in GitHub settings with Derek |
-| P8-06 | docs: resume bullets and talking points | docs-writer drafts; Derek edits | Kept outside the repo unless Derek chooses to commit them |
+| P7-01 | fix: playlist edited during a shuffle | Snapshot mismatch handling | Simulator test edits mid-run; the app stops, verifies and offers restore |
+| P7-02 | fix: network drop and PC sleep mid-run | Resume or restore after a broken connection | Simulator test cuts the connection at move 100 of 300; final state is correct or restored |
+| P7-03 | fix: 429 storms | Long or repeated `Retry-After`, quota errors | User sees "Spotify asked us to slow down" with time left; no tight retry loop |
+| P7-04 | fix: lapsed Premium and other 403s | Clear messages for each 403 cause | Spotify's current 403 bodies are checked first (Rule 4); each case has a test and a message |
+| P7-05 | test: large playlist (1,000+ items) | Performance and call count | Planner and runner tests at 1,000 and 10,000 items within agreed limits |
+| P7-06 | chore: full log and leak review | security-reviewer over logs, fixtures and history | PASS recorded in the issue |
+
+### M8: Visual polish (v0.9.0)
+
+| ID | Title | Description | Acceptance criteria |
+|----|-------|-------------|---------------------|
+| P8-01 | feat(ui): original tray icon | ui-designer offers 2 or 3 options as a card | Light and dark variants in `assets/icons/`; nothing resembling the Spotify logo |
+| P8-02 | feat(ui): follow Windows light and dark mode | `theme.py` | Switching Windows theme updates the icon and windows |
+| P8-03 | feat(ui): settings window and menu wording | Options from D14 picks | Derek approves each screen on a card |
+| P8-04 | feat(ui): progress window polish | Clear progress, time left, cancel | Derek approves the screen |
+| P8-05 | fix(ui): accessibility pass | Keyboard, contrast, screen reader names | Every control reachable by keyboard and named for Narrator |
+| P8-06 | docs: screenshots and demo GIF | For the README | Committed under `docs/screenshots/` with no personal data visible |
+
+### M9: Final project (v1.0.0)
+
+| ID | Title | Description | Acceptance criteria |
+|----|-------|-------------|---------------------|
+| P9-01 | chore: D15, D16 and D17 | Distribution, signing, Client ID in release builds | All three logged |
+| P9-02 | feat: first-run Client ID setup | Only if D17 is A | New user enters their own Client ID once; stored in settings, never in the repo |
+| P9-03 | ci: release workflow | Tagged build attaches the D15 format to a GitHub Release | `v1.0.0` tag (Derek approves) publishes the release |
+| P9-04 | docs: final README, CHANGELOG and privacy note | Demo GIF, how it works, architecture diagram, bring-your-own-Client-ID guide | A fresh Windows user installs and shuffles by following the README |
+| P9-05 | chore: repo presentation | Description, topics, social preview, pin on profile | Done in GitHub settings with Derek |
+| P9-06 | docs: resume bullets and talking points | docs-writer drafts; Derek edits | Kept outside the repo unless Derek chooses to commit them |
 
 ---
 
@@ -342,3 +357,11 @@ Spotify Web API (Rule 4): everything in PROJECT_PLAN section 2.2 was re-verified
 - `GET /me`: returns `id`, `display_name` and a new `account_id`; `email`, `country`, `product`, `explicit_content` and `followers` are marked deprecated. Scope question noted in section 3.3 for P2-02.
 
 Tooling (checked 2026-10-09 on PyPI, GitHub and python.org): versions in section 3.6; Python 3.14 is the newest bug-fix branch and 3.15 is not final; `astral-sh/setup-uv` latest is v10.2.0 (v10 disabled caching on release and `pull_request_target` events); `actions/checkout` latest is v7.0.1. pytest-qt 4.5.0 predates Python 3.14 but installed cleanly on it. A full Qt test run in this Linux container failed on a missing system graphics library (libEGL), which is one reason the recommended CI runs Qt tests on Windows (D24); P1-03 confirms on Windows.
+
+Spotify Web API Player endpoints (planning check for M6 on 2026-10-25; dated notes and sources in the `spotify-api-notes` skill, Player section):
+
+- The February 2026 changelog lists every Player endpoint as still available in development mode, including Start/Resume Playback (`PUT /me/player/play`), Toggle Shuffle (`PUT /me/player/shuffle`), Add Item to Queue, Get User's Queue, Get Playback State and Get Available Devices.
+- Play, shuffle, queue and skip "only work for users who have Spotify Premium", so the player needs Premium for every user, not only the app owner. Scopes: `user-modify-playback-state` and `user-read-playback-state`.
+- `PUT /me/player/play` takes a playlist `context_uri` with an `offset` or a `uris` array; no maximum number of `uris` is documented. The queue can only be added to, one URI per call. Spotify does not guarantee the order of player commands.
+- The Web Playback SDK plays audio in a browser, needs DRM and is documented for websites only, so M6 controls the user's Spotify app instead.
+- Developer Policy (effective 15 May 2025) III.11 forbids products that "mimic, or replicate or attempt to replace a core user experience of Spotify" and II.5 requires cover art and metadata whenever Spotify content plays. App names must not include "Spotify" (Developer Terms VII.1.3, Policy VI.2, design guidelines); "for Spotify" in a tagline is allowed (D27).

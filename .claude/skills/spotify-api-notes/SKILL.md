@@ -50,6 +50,21 @@ Old paths: the `/playlists/{id}/tracks` paths (GET, POST, PUT, DELETE) are REMOV
 
 Response shape change: playlist objects use `items` where they used to use `tracks`, and `items.items[].item` where they used to use `tracks.items[].track`.
 
+## Player endpoints (planning check for M6, 2026-10-25)
+
+Read for the D26 planning cards only; no code calls these yet. P6-01 re-checks them before the player client is written.
+
+- The Feb 2026 changelog lists every Player endpoint under "Endpoints still available": Start/Resume Playback (`PUT /me/player/play`), Toggle Shuffle (`PUT /me/player/shuffle`), Add Item to Queue (`POST /me/player/queue`), Get User's Queue (`GET /me/player/queue`), Get Playback State (`GET /me/player`), Get Available Devices, Get Currently Playing, Get Recently Played, Transfer Playback, Pause, Seek, Repeat, Volume, Next and Previous. The migration guide says nothing about them.
+- Play, shuffle, queue (and the other control endpoints): "This API only works for users who have Spotify Premium." Every user of the player needs Premium, not only the app owner. Control scope: `user-modify-playback-state`. `GET /me/player` needs `user-read-playback-state`; `GET /me/player/queue` lists `user-read-currently-playing` and `user-read-playback-state`.
+- `PUT /me/player/play`: optional `device_id` (default: the active device); body `context_uri` (album, artist or playlist) with `offset` (`position` zero-based or `uri`, playlists and albums only), or `uris` (track URIs), plus `position_ms`. `204` on success; 401, 403 and 429 listed without descriptions. No maximum number of `uris` is documented; find the working size by hand (P6-08).
+- `PUT /me/player/shuffle`: `state` required (`false` turns shuffle off), optional `device_id`, `204` "Command sent".
+- `POST /me/player/queue`: one track or episode `uri` per call, `204`. No endpoint clears the queue.
+- Every player page: "The order of execution is not guaranteed when you use this API with other Player API endpoints." Read the state back after a sequence of commands.
+- `GET /me/player`: `device` (`id` nullable, `is_active`, `is_restricted` "no Web API commands will be accepted by this device", `name`, `type`), `shuffle_state`, `repeat_state`, `context` (nullable, has `uri`), `item` (nullable), `progress_ms`, `is_playing`, `currently_playing_type` (`track`, `episode`, `ad`, `unknown`). Codes 200, 204, 401, 403, 429; 204 is not described. No `smart_shuffle` field is documented.
+- Web Playback SDK: a browser JavaScript library that makes "a local Spotify Connect device in your browser"; Premium only; documented for websites (iframes must allow `encrypted-media`); "must not be used in commercial projects without Spotify's prior written approval". Not used: FairShuffle controls the user's Spotify app instead.
+- Developer Policy (effective 15 May 2025): III.11 "Do not build products or services that mimic, or replicate or attempt to replace a core user experience of Spotify"; II.5 "there shall be no playback of Spotify Content without showing relevant cover art and metadata"; VI.2 the name "should not begin with 'Spot' or be confusing in sound or spelling to Spotify". Developer Terms (version 10, 15 May 2025) VII.1.3: no trademark or domain name that includes "Spotify". Design guidelines: the app name must not include "Spotify"; "for Spotify" is acceptable; attribute Spotify content with the Spotify logo or icon and link back with "OPEN SPOTIFY", "PLAY ON SPOTIFY" or "LISTEN ON SPOTIFY".
+- Sources: the Feb 2026 changelog and migration guide (below), https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback, .../toggle-shuffle-for-users-playback, .../add-to-queue, .../get-queue, .../get-information-about-the-users-current-playback, https://developer.spotify.com/documentation/web-playback-sdk, https://developer.spotify.com/policy, https://developer.spotify.com/terms, https://developer.spotify.com/documentation/design
+
 ## Rate limits
 
 - Rolling 30-second window. Over the limit: HTTP 429 with a `Retry-After` header (seconds) that is "normally" present. Wait that long, then retry; use a fallback backoff when the header is missing.

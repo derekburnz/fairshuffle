@@ -36,7 +36,7 @@ M1 (v0.1.0) built the app's frame, M2 (v0.2.0) added signing in to Spotify and M
 | `storage/backups.py` | Saves a playlist's order before every shuffle to `%APPDATA%\FairShuffle\backups` (D13): playlist ID, `snapshot_id`, time and each entry's URI, kind and local-file flag, nothing about the account. Writes a temp file and swaps it in, reads it back and checks it, and keeps the newest 10 per playlist. Refuses damaged, oversized or tampered files and playlist IDs that aren't plain base62, and logs no path. Gives the reorder target for a keep-order Undo (M4) |
 | `storage/logging_setup.py` | Rotating log files (1 MB, five old files kept). Before a line is written, Authorization headers, Bearer tokens, `code` and any field whose name ends in `token`, `secret`, `verifier` or `client_id` are masked in any letter case, along with exact values such as the Client ID that code registers with `mask_secret()`. The home folder is written as `%USERPROFILE%` so the Windows user name stays out of paths under it. Qt's own warnings and uncaught errors go to the same file |
 
-## Components (planned for M1 to M8)
+## Components (planned for M1 to M9)
 
 
 ```
