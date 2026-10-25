@@ -48,7 +48,9 @@ def hold_app_lock() -> QLockFile:
     lock.setStaleLockTime(0)
     if lock.tryLock(0):
         return lock
-    raise Stop("FairShuffle is running (or its lock can't be checked). Quit it first.")
+    if lock.error() == QLockFile.LockError.LockFailedError:
+        raise Stop("FairShuffle is running. Quit it from the tray first.")
+    raise Stop("Can't check whether FairShuffle is running, so not starting.")
 
 
 def wait_until(app: QApplication, done: Callable[[], bool], seconds: float, what: str) -> float:
@@ -62,7 +64,22 @@ def wait_until(app: QApplication, done: Callable[[], bool], seconds: float, what
 
 
 def main() -> int:
-    lock = hold_app_lock()
+    try:
+        lock = hold_app_lock()
+    except Stop as error:
+        print(f"Stopped: {error}")
+        return 2
+    try:
+        return check()
+    except Exception as error:  # noqa: BLE001  # the class only: a traceback shows home paths
+        print(f"Stopped: unexpected {type(error).__name__}.")
+        return 2
+    finally:
+        lock.unlock()
+
+
+def check() -> int:
+    """Everything after the lock: build the app's parts, run the steps, print the results."""
     start_logging()
     app = create_application()
     dialogs: list[str] = []
@@ -87,6 +104,7 @@ def main() -> int:
     tray = TrayIcon(quit_app=app.quit, account=account, playlists=playlists, shuffles=shuffles)
     tray.showMessage = lambda title, text, *_: toasts.append(f"{title} | {text}")  # type: ignore[method-assign]
     shuffles.finished.connect(finished.append)
+    keep_before = shuffles.keep_date_added  # put back at the end, whatever happens
     try:
         print(f"FairShuffle {__version__}: resuming the saved sign-in")
         account.start()
@@ -134,6 +152,9 @@ def main() -> int:
         def run(label: str, button: str, seconds: float) -> list[str | None]:
             before_runs = len(finished)
             progress_seen.clear()
+            chosen = picker.selected_playlist()
+            if chosen is None or chosen.id != target.id:
+                raise Stop("The picker's selection is no longer the test playlist.")
             getattr(picker, button).click()
             took = wait_until(
                 app,
@@ -211,15 +232,11 @@ def main() -> int:
         results.append(("Keep-date-added shuffle", ok))
         print(f"  new order: {after != before}  ->  {'PASS' if ok else 'FAIL'}")
 
-        # 4. The setting reads back as a new start would see it, then back to fast.
+        # 4. The setting reads back as a new start would see it.
         reread = ShuffleController(account).keep_date_added
-        picker.keep_date_added.setChecked(False)
-        app.processEvents()
-        ok = reread and not settings.load().keep_date_added
-        results.append(("Setting saved and restored", ok))
+        results.append(("Setting saved", reread))
         print(
-            f"\n4. A new start sees keep date added = {reread}; now unticked again "
-            f"(saved: {settings.load().keep_date_added})  ->  {'PASS' if ok else 'FAIL'}"
+            f"\n4. A new start sees keep date added = {reread}  ->  {'PASS' if reread else 'FAIL'}"
         )
 
         print(f"\nDialogs shown: {len(dialogs)}")
@@ -237,9 +254,10 @@ def main() -> int:
         return 2
     finally:
         shuffles.shutdown()
+        shuffles.set_keep_date_added(keep_before)
+        print(f"Keep date added put back to {keep_before}.")
         account.shutdown()
         tray.hide()
-        lock.unlock()
 
 
 if __name__ == "__main__":
