@@ -23,6 +23,9 @@ dependencies = [
 fairshuffle = "fairshuffle.__main__:main"
 
 [dependency-groups]
+build = [
+    "pyinstaller>=6.16",
+]
 dev = [
     "ruff>=0.16",
     "pyright[nodejs]>=1.1.414",  # [nodejs] bundles Node, so no separate Node install

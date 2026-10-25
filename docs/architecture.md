@@ -153,6 +153,7 @@ Scopes are the four playlist scopes, `playlist-read-private`, `playlist-read-col
 | Data | Location | In Git? | Built in |
 |------|----------|---------|----------|
 | Spotify Client ID (development) | `.env` in the project folder | Never | M2 |
+| Spotify Client ID (prototype .exe) | `.env` next to `FairShuffle.exe`, copied in by the user (P5-4) | Never; the build refuses to ship one | M5 |
 | Refresh token | Windows Credential Manager, service `FairShuffle` | Never | M2 |
 | Access token | Memory only | Never | M2 |
 | Settings (no secrets) | `%APPDATA%\FairShuffle\settings.json` | No | M5 |
@@ -171,5 +172,6 @@ Scopes are the four playlist scopes, `playlist-read-private`, `playlist-read-col
 | pytest, pytest-qt, pytest-cov | 9.1.1, 4.5.0, 7.1.0 | tests and coverage |
 | pre-commit | 4.7.0 | runs gitleaks, ruff and hygiene hooks before every commit |
 | gitleaks | 8.30.1 | pre-commit hook and CI secret scan |
+| PyInstaller | 6.22.3 (D25, in the `build` dependency group) | `scripts/build_exe.py` builds `dist/FairShuffle/` from `packaging/fairshuffle.spec` |
 
 A sample project with the proposed `pyproject.toml` resolved and locked cleanly with uv on Python 3.14.8, and ruff and pyright ran clean on it.

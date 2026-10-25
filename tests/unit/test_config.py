@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -147,3 +148,37 @@ def test_dev_env_file_is_none_outside_a_source_checkout(
     monkeypatch.setattr(config, "__file__", str(installed))
 
     assert dev_env_file() is None
+
+
+def test_the_built_app_reads_the_env_next_to_its_exe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    exe = tmp_path / "FairShuffle" / "FairShuffle.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+
+    assert dev_env_file() == exe.parent.resolve() / ".env"
+
+
+def test_the_built_app_takes_the_client_id_from_that_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    folder = tmp_path / "FairShuffle"
+    folder.mkdir()
+    (folder / ".env").write_text("SPOTIFY_CLIENT_ID=fake-client-id-from-exe-folder\n")
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(folder / "FairShuffle.exe"))
+
+    assert load_settings(dev_env_file()).client_id == "fake-client-id-from-exe-folder"
+
+
+def test_the_built_app_says_where_its_env_goes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "FairShuffle.exe"))
+
+    with pytest.raises(ConfigError, match=r"a \.env file next to FairShuffle\.exe"):
+        load_settings(dev_env_file())
