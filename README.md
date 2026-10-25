@@ -24,7 +24,7 @@ Milestone M3 (v0.3.0) adds the playlist picker. Left-click the tray icon, or pic
 
 Milestone M4 (v0.4.0) adds the shuffle engine: a Fisher-Yates shuffle with Windows' secure random source, a backup of the order before every shuffle, two ways to write the new order (fast, which rewrites the list in about 2 seconds, or keep order, which moves one song at a time so "date added" and local files survive) and a read-back check plus Undo. It was checked against the real Spotify on a test playlist: 10 shuffles and an Undo, all verified.
 
-Milestone M5 (v0.5.0, in progress) makes it usable from the tray: Shuffle, Undo and Cancel in the picker, a "Keep date added (slower)" box, questions before anything is lost and a notice when the shuffle is done ([screenshot](docs/screenshots/picker-shuffle.png)). It also adds a FairShuffle.exe build, published as a pre-release zip.
+Milestone M5 (v0.5.0) makes it usable from the tray: Shuffle, Undo and Cancel in the picker, a "Keep date added (slower)" box, questions before anything is lost and a notice when the shuffle is done ([screenshot](docs/screenshots/picker-shuffle.png)). It also adds a FairShuffle.exe build, published as a pre-release zip.
 
 The [roadmap](docs/planning/ROADMAP.md) lists every milestone and issue.
 
