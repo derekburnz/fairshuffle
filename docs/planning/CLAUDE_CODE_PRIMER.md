@@ -84,7 +84,7 @@ Key idea: instructions in CLAUDE.md are guidance Claude follows. Hooks and permi
 `.claude/settings.json` (shared, committed) and `.claude/settings.local.json` (personal, not committed) hold `allow`, `ask` and `deny` rules. Deny always wins, like a firewall. Our starter rules:
 
 - deny: reading or editing `.env` and `secrets/`, force-push, hard reset
-- ask: `git push`, `gh pr merge`, `gh repo create`, `git tag`, `gh release create`
+- ask: `gh pr merge`, `gh repo create`, `git tag`, `gh release create`, `gh repo edit` (`git push` was on this list until P5-2 on 2026-10-25, when Derek let Claude push branches freely)
 
 "Ask" rules still prompt even in auto mode, which keeps you in control of anything that leaves your PC.
 

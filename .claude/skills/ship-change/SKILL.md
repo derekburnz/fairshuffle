@@ -12,9 +12,9 @@ Follow every step. Stop and ask Derek wherever marked ASK.
 3. **Diff review.** Show Derek a short summary of what changed (files and one line each).
 4. **Security review.** Stage the changes and ask the `security-reviewer` agent to review the staged diff. On FAIL, fix the findings and repeat. Never skip this for auth, config, logging or networking changes.
 5. **Commit.** Conventional Commit message: `type(scope): short summary` plus a body explaining why. Reference the issue (`Refs #12`). The gitleaks pre-commit hook runs automatically; if it blocks the commit, stop and tell Derek what it found (location only, never the value).
-6. **Push. ASK.** Tell Derek which branch you are pushing and wait for approval.
+6. **Push.** Push the branch (P5-2: no need to ask). Never force-push.
 7. **Pull request.** Create a PR with `gh pr create` (or the GitHub connector) using `.github/pull_request_template.md`. Title matches the commit style. Body includes `Closes #<issue>`, what changed, how it was tested and screenshots for UI changes. Add labels and the milestone.
-8. **CI.** Wait for checks. If they fail, fix on the same branch and push again (ask again before pushing).
+8. **CI.** Wait for checks. If they fail, fix on the same branch and push again.
 9. **Merge.** When CI is green and the security review is PASS, squash merge (GitHub deletes the branch), then tell Derek: PR link, CI status, security review result (P0-21).
 10. **Wrap up.** Switch back to `main` and pull. If this finished a milestone, run the `phase-report` skill.
 
