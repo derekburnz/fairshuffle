@@ -25,7 +25,6 @@ from fairshuffle.shuffle.planner import (
     fast_mode_losses,
     fast_plan,
     reorder_plan,
-    uri_plan,
 )
 from fairshuffle.spotify.client import SpotifyClient, new_session
 from fairshuffle.spotify.models import PlaylistItem
@@ -190,8 +189,3 @@ def test_a_local_uri_without_its_flag_is_still_left_out() -> None:
 
     assert fast_mode_losses(items) == 1
     assert fast_plan(items) == [Replace((song(0).uri or "",))]
-
-
-def test_a_uri_plan_needs_at_least_one_uri() -> None:
-    with pytest.raises(ValueError):
-        uri_plan([])

@@ -18,12 +18,7 @@ from fairshuffle.config import load_settings
 from fairshuffle.spotify.client import API_BASE, SpotifyClient, new_session
 from fairshuffle.spotify.errors import NotOwner, SpotifyUnavailable
 from fairshuffle.spotify.models import Playlist, PlaylistItem
-from fairshuffle.spotify.playlists import (
-    PAGE_SIZE,
-    create_private_playlist,
-    list_editable_playlists,
-    read_playlist_items,
-)
+from fairshuffle.spotify.playlists import PAGE_SIZE, list_editable_playlists, read_playlist_items
 
 LIST = f"{API_BASE}/me/playlists"
 ME_ID = "fakeuser"
@@ -446,30 +441,3 @@ def test_a_playlists_repr_leaves_out_its_name_and_owner() -> None:
 
     assert "Secret Crush" not in text
     assert "fake-account-name" not in text
-
-
-def test_a_private_playlist_is_made_for_the_player(
-    spotify: responses.RequestsMock, client: SpotifyClient
-) -> None:
-    spotify.post(
-        f"{API_BASE}/me/playlists",
-        status=201,
-        json={"id": "fakecreated1"},
-        match=[
-            matchers.json_params_matcher(
-                {"name": "FairShuffle: True Shuffle", "public": False, "description": "Fake"}
-            )
-        ],
-    )
-
-    assert create_private_playlist(client, "FairShuffle: True Shuffle", "Fake") == "fakecreated1"
-
-
-@pytest.mark.parametrize("reply", [{}, {"id": "../me"}, {"id": 5}])
-def test_a_created_playlist_without_a_usable_id_is_refused(
-    spotify: responses.RequestsMock, client: SpotifyClient, reply: dict[str, Any]
-) -> None:
-    spotify.post(f"{API_BASE}/me/playlists", status=201, json=reply)
-
-    with pytest.raises(SpotifyUnavailable):
-        create_private_playlist(client, "Name", "Description")

@@ -19,6 +19,7 @@ from fairshuffle.auth.oauth import SpotifyAuth, Tokens
 from fairshuffle.config import load_settings
 from fairshuffle.shuffle import session as true_shuffle
 from fairshuffle.shuffle.engine import shuffled
+from fairshuffle.spotify import player
 from fairshuffle.spotify.client import SpotifyClient, new_session
 from fairshuffle.spotify.errors import NoActiveDevice, PremiumRequired
 
@@ -74,8 +75,8 @@ def client() -> Iterator[SpotifyClient]:
         yield SpotifyClient(SpotifyAuth(http, load_settings(), tokens), sleep=lambda _: None)
 
 
-def start(client: SpotifyClient, play_playlist_id: str | None = None) -> true_shuffle.Session:
-    return true_shuffle.start(client, play_playlist_id, rng=rng(), sleep=lambda _: None)
+def start(client: SpotifyClient) -> true_shuffle.Session:
+    return true_shuffle.start(client, rng=rng(), sleep=lambda _: None)
 
 
 def expected_order() -> list[str]:
@@ -106,38 +107,40 @@ def test_the_playlist_playing_is_never_changed(
     assert all("/fakeplaylist1/" not in call.path for call in spotify.writes())
 
 
-def test_the_order_goes_into_one_private_playlist_of_our_own(
+def test_nothing_is_added_to_the_library(
+    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    start(client)
+
+    assert spotify.writes() == []  # the order goes to Spotify as a song list, not a playlist
+    assert app.context_uri is None
+    [first, *_] = [call for call in app.commands() if call.path.endswith("/play")]
+    assert first.body is not None and first.body["uris"] == expected_order()
+
+
+def test_a_long_playlist_plays_a_fair_sample_of_max_songs(
+    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(true_shuffle, "MAX_SONGS", 50)
+
+    session = start(client)
+
+    assert session.order == tuple(expected_order()[:50])
+    assert session.order[0] == NOW
+    assert len(set(session.order)) == 50
+    assert session.left_for_later == 200
+    assert app.order == list(session.order)
+
+
+def test_it_knows_while_our_order_is_still_playing(
     client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
 ) -> None:
     session = start(client)
+    app.press_next()
+    assert true_shuffle.is_ours(player.playback_state(client), session)
 
-    [made] = spotify.created
-    assert made.public is False
-    assert session.play_playlist_id == made.id
-    assert made.uris == list(session.order)
-    assert app.context_uri == f"spotify:playlist:{made.id}"
-    create = next(call for call in spotify.calls if call.path == "/v1/me/playlists")
-    assert create.body is not None and create.body["name"] == true_shuffle.PLAYLIST_NAME
-
-
-def test_the_next_start_reuses_that_playlist(
-    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
-) -> None:
-    first = start(client)
-    listening(app, SONGS, NOW)
-    second = start(client, first.play_playlist_id)
-
-    assert len(spotify.created) == 1
-    assert second.play_playlist_id == first.play_playlist_id
-
-
-def test_a_deleted_playlist_is_made_again(
-    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
-) -> None:
-    session = start(client, "fakegone1")
-
-    assert len(spotify.created) == 1
-    assert session.play_playlist_id == spotify.created[0].id
+    listening(app, SONGS, NOW)  # the user picks the playlist again in Spotify
+    assert not true_shuffle.is_ours(player.playback_state(client), session)
 
 
 def test_next_and_previous_in_spotify_follow_our_order(
@@ -207,8 +210,8 @@ def test_a_song_listed_twice_still_plays_twice(
 
 @pytest.mark.parametrize(
     "context",
-    [None, "spotify:album:fakealbum1", "spotify:collection:fakeuser", "spotify:playlist:fakemine"],
-    ids=["nothing", "album", "liked-songs", "already-ours"],
+    [None, "spotify:album:fakealbum1", "spotify:collection:fakeuser"],
+    ids=["nothing-or-a-song-list", "album", "liked-songs"],
 )
 def test_only_a_playlist_playing_now_can_be_true_shuffled(
     client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer, context: str | None
@@ -216,9 +219,9 @@ def test_only_a_playlist_playing_now_can_be_true_shuffled(
     app.context_uri = context
 
     with pytest.raises(true_shuffle.NothingToPlay, match="Play one of your playlists"):
-        true_shuffle.start(client, "fakemine", sleep=lambda _: None)
+        start(client)
 
-    assert spotify.writes() == []
+    assert app.commands() == []
 
 
 def test_someone_elses_playlist_is_explained(
@@ -240,10 +243,10 @@ def test_a_playlist_of_only_local_files_has_nothing_to_play(
     with pytest.raises(true_shuffle.NothingToPlay, match="Local files"):
         start(client)
 
-    assert spotify.created == []
+    assert app.commands() == []
 
 
-def test_with_no_spotify_app_open_nothing_is_written(
+def test_with_no_spotify_app_open_nothing_changes(
     client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
 ) -> None:
     app.devices[0].is_active = False
@@ -251,7 +254,7 @@ def test_with_no_spotify_app_open_nothing_is_written(
     with pytest.raises(NoActiveDevice):
         start(client)
 
-    assert spotify.writes() == []
+    assert app.commands() == []
 
 
 def test_a_free_account_is_told_before_playback_changes(
@@ -318,6 +321,5 @@ def test_the_log_has_counts_but_no_songs_or_playlists(
 
     assert "fakesong" not in caplog.text
     assert "fakeplaylist1" not in caplog.text
-    assert "fakecreated" not in caplog.text
     assert "250 songs" in caplog.text
     assert "fakesong" not in repr(session)

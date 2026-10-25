@@ -68,22 +68,6 @@ def read_playlist_items(client: SpotifyClient, playlist_id: str) -> list[Playlis
     return items
 
 
-def create_private_playlist(client: SpotifyClient, name: str, description: str) -> str:
-    """Make a private playlist for the signed-in user and return its ID.
-
-    POST /me/playlists replaced POST /users/{user_id}/playlists in February 2026; public false
-    makes it private, which needs playlist-modify-private (Spotify docs, re-checked 2026-10-25).
-    """
-    reply = client.post(
-        "/me/playlists", {"name": name, "public": False, "description": description}
-    )
-    playlist_id = reply.get("id")
-    if not (isinstance(playlist_id, str) and _ID.fullmatch(playlist_id)):
-        raise _not_understood()
-    log.info("Made a private playlist for the true shuffle player")
-    return playlist_id
-
-
 def _entries(
     client: SpotifyClient, path: str, params: dict[str, Any] | None = None
 ) -> Iterator[Any]:

@@ -105,7 +105,8 @@ class ShuffleController(QObject):
 
     def set_keep_date_added(self, keep: bool) -> None:
         if keep != self._settings.keep_date_added:
-            self._settings = settings.update(keep_date_added=keep)
+            self._settings = settings.Settings(keep_date_added=keep)
+            settings.save(self._settings)
 
     @property
     def mode(self) -> Mode:

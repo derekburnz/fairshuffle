@@ -67,13 +67,6 @@ def fast_plan(target: Sequence[PlaylistItem]) -> list[Replace | Append]:
     uris = writable_uris(target)
     if not uris:
         raise ValueError("Nothing in this order can be written in fast mode.")
-    return uri_plan(uris)
-
-
-def uri_plan(uris: Sequence[str]) -> list[Replace | Append]:
-    """Replace with the first 100 URIs, then add the rest 100 at a time. At least one URI."""
-    if not uris:
-        raise ValueError("A plan needs at least one URI.")
     chunks = [
         tuple(uris[start : start + MAX_URIS_PER_WRITE])
         for start in range(0, len(uris), MAX_URIS_PER_WRITE)
