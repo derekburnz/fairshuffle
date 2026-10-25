@@ -8,7 +8,7 @@ There is no client secret in this project. FairShuffle signs in with Authorizati
 
 - **Spotify Premium on the account that will own the app.** Since February 2026 Spotify only lets Premium accounts run apps in development mode, which is the mode every new app starts in. If the owner's Premium lapses later, the app stops working until it is renewed.
 - **A verified email address on that Spotify account.** The dashboard won't create apps until the email is verified.
-- **The FairShuffle repo cloned on your PC** with `uv sync` done, as in the [README](../README.md#developer-setup).
+- **FairShuffle on your PC**: either the repo cloned with `uv sync` done, as in the [README](../README.md#developer-setup), or the FairShuffle folder unzipped from a release.
 - **A web browser** signed in to that Spotify account.
 
 ## 1. Create the app
@@ -79,7 +79,7 @@ Spotify doesn't document the exact wording of its sign-in error pages, so the tw
 
 | Value | Where it is kept | In Git? |
 |-------|------------------|---------|
-| Client ID | `.env` in your project folder | Never |
+| Client ID | `.env` in your project folder, or next to `FairShuffle.exe` for the built app | Never |
 | Redirect URI | `.env`, and the app's Basic Information page in the dashboard | `.env.example` holds the standard one |
 | Client secret | Nowhere. Not used | Never |
 | Sign-in tokens (M2) | Windows Credential Manager and the app's memory, never a file FairShuffle writes | Never |
