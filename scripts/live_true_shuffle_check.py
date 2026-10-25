@@ -120,6 +120,8 @@ def live_check(
     songs = writable_uris(read_playlist_items(client, playlist_id))
     if len(songs) < 3:
         raise Stop(f'"{TEST_PLAYLIST}" needs at least 3 songs Spotify can play.')
+    if len(songs) > MAX_TEST_SONGS:
+        raise Stop(f"More than {MAX_TEST_SONGS} songs: is this really the test one?")
     device = player.controllable_device(client)
     before = player.playback_state(client)
     shuffle_before = before.shuffle if before is not None else False
@@ -204,11 +206,13 @@ def live_check(
         toggle.toggle(False)
         state = state_when(lambda s: s.context_uri == context)
         report.check("True Shuffle turns off", toggle.status.state is ToggleState.OFF)
-        report.check(
-            "The test playlist plays again", state is not None and state.context_uri == context
-        )
+        back = state is not None and state.context_uri == context
+        report.check("The test playlist plays again", back)
         report.check("Spotify's shuffle is back on, as it was", state is not None and state.shuffle)
         report.check("From the song that was on", song(state) == on_at_untick)
+
+        if not back:
+            raise Stop("Spotify isn't playing the test playlist any more, so the rest can't run.")
 
         emit("5. Tick again, then pick the playlist in Spotify: the toggle clears itself")
         toggle.toggle(True)
@@ -297,9 +301,10 @@ def main() -> int:
     except Stop as error:
         print(f"Stopped: {error}")
         return 2
-    start_logging()  # after the lock: the tray app shares this log file, with the same redaction
-    app = create_application()  # the toggle's watch timer is a Qt timer
+    app = None
     try:
+        start_logging()  # after the lock: the tray app shares this log file, same redaction
+        app = create_application()  # the toggle's watch timer is a Qt timer
         with new_session() as http:
             auth = SpotifyAuth.from_store(http, load_settings())
             if auth is None:
@@ -324,11 +329,15 @@ def main() -> int:
     except (ConfigError, Stop, SignInRequired, SpotifyError, TokenError, TokenStoreError) as error:
         print(f"Stopped: {error}")
         return 2
+    except KeyboardInterrupt:
+        print("Stopped: interrupted.")
+        return 2
     except Exception as error:  # noqa: BLE001  # a bug of ours: the class only, as the app does
         print(f"Stopped: unexpected {type(error).__name__}.")
         return 2
     finally:
-        app.quit()
+        if app is not None:
+            app.quit()
         lock.unlock()
 
 

@@ -145,6 +145,17 @@ def test_a_playlist_with_too_few_songs_is_refused(
         check(client, [])
 
 
+def test_a_playlist_too_long_for_a_test_playlist_is_refused(
+    qapp: QApplication, client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    spotify.add_playlist("fakeplaylist1", [f"spotify:track:fakesong{n}" for n in range(101)])
+
+    with pytest.raises(script.Stop, match="More than 100 songs"):
+        check(client, [])
+
+    assert app.commands() == []
+
+
 def test_only_the_one_owned_shuffle_test_playlist_is_used() -> None:
     def playlist(playlist_id: str, name: str, owner: str) -> Playlist:
         return Playlist(playlist_id, name, owner, False, "fake-snapshot", 30)
