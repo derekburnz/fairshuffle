@@ -391,11 +391,13 @@ def test_only_a_well_formed_reason_code_is_quoted(
     spotify.get(ME, status=400, json={"error": {"reason": "BAD_INPUT"}})
     spotify.get(ME, status=400, json={"error": {"reason": "fake-access-token-1 leaked"}})
 
-    with pytest.raises(RequestRejected, match=r"\(400\) \(BAD_INPUT\)"):
+    with pytest.raises(RequestRejected, match=r"\(400\) \(BAD_INPUT\)") as first:
         client.get("/me")
     with pytest.raises(RequestRejected) as caught:
         client.get("/me")
 
+    assert first.value.reason == "BAD_INPUT"  # the player maps its errors from this (M6)
+    assert caught.value.reason is None
     assert "leaked" not in str(caught.value)
 
 

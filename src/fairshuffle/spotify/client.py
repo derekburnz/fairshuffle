@@ -36,6 +36,7 @@ from fairshuffle.spotify.errors import (
     NotOwner,
     RateLimited,
     RequestRejected,
+    SpotifyError,
     SpotifyUnavailable,
 )
 from fairshuffle.spotify.ratelimit import (
@@ -195,6 +196,13 @@ class SpotifyClient:
         self._sleep(seconds)
 
     def _read(self, response: requests.Response, path: str) -> dict[str, Any]:
+        try:
+            return self._read_reply(response, path)
+        except SpotifyError as error:
+            error.reason = _reason_code(response)
+            raise
+
+    def _read_reply(self, response: requests.Response, path: str) -> dict[str, Any]:
         status = response.status_code
         if status == 401:  # still 401 after SpotifyAuth refreshed once
             raise SignInRequired("Spotify needs you to sign in again.")
@@ -250,10 +258,18 @@ def _json_object(response: requests.Response) -> dict[str, Any] | None:
 
 def _reason(response: requests.Response) -> str:
     """ " (REASON)" from Spotify's error object when it gives a well-formed reason code, else ""."""
+    reason = _reason_code(response)
+    return f" ({reason})" if reason else ""
+
+
+def _reason_code(response: requests.Response) -> str | None:
+    """Spotify's reason code from the error object when it is well-formed, else None."""
+    if response.status_code < 300:
+        return None
     try:
         body: Any = response.json()
     except ValueError:
-        return ""
+        return None
     error = body.get("error") if isinstance(body, dict) else None
     reason = error.get("reason") if isinstance(error, dict) else None
-    return f" ({reason})" if isinstance(reason, str) and _REASON.fullmatch(reason) else ""
+    return reason if isinstance(reason, str) and _REASON.fullmatch(reason) else None

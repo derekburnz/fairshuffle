@@ -11,7 +11,12 @@ from fairshuffle.auth.oauth import SignInRequired
 
 __all__ = [
     "AccessDenied",
+    "DeviceRestricted",
+    "NoActiveDevice",
     "NotOwner",
+    "PlayerError",
+    "PlayerRefused",
+    "PremiumRequired",
     "RateLimited",
     "RequestRejected",
     "SignInRequired",
@@ -21,7 +26,13 @@ __all__ = [
 
 
 class SpotifyError(Exception):
-    """Any Spotify Web API failure other than an ended sign-in."""
+    """Any Spotify Web API failure other than an ended sign-in.
+
+    reason is Spotify's short reason code from the error object (such as QUOTA_EXCEEDED or
+    PREMIUM_REQUIRED) when the reply had a well-formed one, else None.
+    """
+
+    reason: str | None = None
 
 
 class AccessDenied(SpotifyError):
@@ -66,3 +77,23 @@ class RequestRejected(SpotifyError):
     def __init__(self, message: str, status: int) -> None:
         super().__init__(message)
         self.status = status
+
+
+class PlayerError(SpotifyError):
+    """A playback command (spotify/player.py) that Spotify's app didn't carry out."""
+
+
+class NoActiveDevice(PlayerError):
+    """No Spotify app is open and active for this account, so there is nothing to control."""
+
+
+class PremiumRequired(PlayerError):
+    """Spotify only takes playback commands from Premium accounts."""
+
+
+class DeviceRestricted(PlayerError):
+    """The active device says it accepts no Web API commands (device.is_restricted)."""
+
+
+class PlayerRefused(PlayerError):
+    """Spotify answered a playback command with 403 for another reason, or none."""
