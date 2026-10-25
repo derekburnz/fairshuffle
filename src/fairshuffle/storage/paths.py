@@ -22,6 +22,10 @@ def backup_dir() -> Path:
     return roaming_data_dir() / "backups"
 
 
+def settings_file() -> Path:
+    return roaming_data_dir() / "settings.json"
+
+
 def local_data_dir() -> Path:
     """%LOCALAPPDATA%\\FairShuffle, or the usual place under the home folder if it is unset."""
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")

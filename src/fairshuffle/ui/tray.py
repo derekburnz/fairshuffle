@@ -8,12 +8,24 @@ from PySide6.QtCore import QObject, QRectF, Qt
 from PySide6.QtGui import QAction, QColor, QCursor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
+from fairshuffle.shuffle.runner import Result
 from fairshuffle.ui.about import build_about_box
 from fairshuffle.ui.account import AccountController, AccountState, AccountStatus
-from fairshuffle.ui.picker import PlaylistPicker
+from fairshuffle.ui.picker import UNTITLED, PlaylistPicker, quoted
 from fairshuffle.ui.playlists import PlaylistController
+from fairshuffle.ui.shuffle import Action, Finished, ShuffleController
 
 TOOLTIP = "FairShuffle"
+# The completion notice. Spotify's own shuffle, or a sort other than Custom order, would hide the
+# new order, so the tip says how to play it as written.
+PLAY_TIP = (
+    "Play it from track 1 with Spotify's shuffle off. If the old order shows, sort the playlist "
+    "by Custom order."
+)
+UNDONE = "The order from before the shuffle is back."
+NOT_FINISHED = (
+    "It may have changed. Open FairShuffle and press Undo to put back the order from before."
+)
 
 # For each account state: the greyed-out line at the top of the menu, then the account action's
 # label and what it does (None hides the action).
@@ -76,12 +88,14 @@ class TrayIcon(QSystemTrayIcon):
         quit_app: Callable[[], None],
         account: AccountController | None = None,
         playlists: PlaylistController | None = None,
+        shuffles: ShuffleController | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(placeholder_icon(), parent)
         self._quit_app = quit_app
         self._account = account
         self._playlists = playlists
+        self._shuffles = shuffles
         self._about_box: QMessageBox | None = None
         self._picker: PlaylistPicker | None = None
         self.setToolTip(TOOLTIP)
@@ -101,9 +115,10 @@ class TrayIcon(QSystemTrayIcon):
             self.menu.addAction(self.status_action)
             self.menu.addAction(self.account_action)
             self.menu.addSeparator()
-            if playlists is not None:
+            if playlists is not None and shuffles is not None:
                 self.menu.addAction(self.picker_action)
                 self.menu.addSeparator()
+                shuffles.finished.connect(self.show_finished)
             account.status_changed.connect(self.show_account_status)
             self.show_account_status(account.status)
         self.about_action = QAction("&About FairShuffle", self.menu)
@@ -139,16 +154,41 @@ class TrayIcon(QSystemTrayIcon):
 
     def show_picker(self) -> None:
         """Open the playlist picker, or bring it forward if it is open already."""
-        if self._account is None or self._playlists is None:  # pragma: no cover  # no such item
-            return
+        account, playlists, shuffles = self._account, self._playlists, self._shuffles
+        if account is None or playlists is None or shuffles is None:  # pragma: no cover
+            return  # the item is only in the menu with all three
         if self._picker is None:
-            self._picker = PlaylistPicker(self._account, self._playlists)
+            self._picker = PlaylistPicker(account, playlists, shuffles)
         self._picker.open()
+
+    def show_finished(self, finished: Finished) -> None:
+        """The completion notice: a toast once a shuffle or an Undo has changed the playlist, or
+        when one stopped after it may have. The picker says the rest and asks when there is a
+        choice, but it can be hidden (signed out mid-run, say), and Undo must not go unnoticed.
+        """
+        outcome = finished.outcome
+        if not outcome.changed:
+            return
+        name = quoted(finished.playlist.name or UNTITLED)
+        what = "shuffle" if finished.action is Action.SHUFFLE else "Undo"
+        if outcome.result is not Result.DONE:
+            title, text = f"The {what} of {name} didn't finish", NOT_FINISHED
+            self.showMessage(title, text, QSystemTrayIcon.MessageIcon.Warning, 10000)
+            return
+        if finished.action is Action.SHUFFLE:
+            title, text = f"Shuffled {name}", PLAY_TIP
+        else:
+            title, text = f"Put back {name}", UNDONE
+        if outcome.message:  # e.g. local files a fast Undo couldn't put back
+            text = f"{text} {outcome.message}"
+        self.showMessage(title, text, QSystemTrayIcon.MessageIcon.Information, 10000)
 
     def show_account_status(self, status: AccountStatus) -> None:
         """Bring the account lines of the menu up to date, and pass on any message once."""
         signed_in = status.state is AccountState.SIGNED_IN
-        self.picker_action.setVisible(signed_in and self._playlists is not None)
+        self.picker_action.setVisible(
+            signed_in and self._playlists is not None and self._shuffles is not None
+        )
         if not signed_in and self._picker is not None:
             self._picker.hide()
         line = _STATUS_LINES[status.state]

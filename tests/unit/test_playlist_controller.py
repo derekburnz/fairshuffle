@@ -6,8 +6,8 @@ import logging
 from typing import Any
 
 import pytest
+from fakes.ui_fakes import FakeAccount, HeldJobs, playlist
 from PySide6.QtWidgets import QApplication
-from ui_fakes import FakeAccount, HeldJobs, playlist
 
 from fairshuffle.spotify.errors import RateLimited, SignInRequired, SpotifyUnavailable
 from fairshuffle.spotify.models import Playlist

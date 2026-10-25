@@ -93,6 +93,16 @@ def test_a_damaged_newest_file_falls_back_to_the_one_before() -> None:
     assert backups.newest("fakelist") == first
 
 
+def test_a_deeply_nested_file_counts_as_damaged() -> None:
+    # json.loads raises RecursionError, not ValueError, on deep nesting.
+    first = backups.save("fakelist", "fake-snapshot-1", mixed())
+    backups.save("fakelist", "fake-snapshot-2", mixed())
+    newest_path = sorted(paths.backup_dir().glob("fakelist-*.json"))[-1]
+    newest_path.write_text("[" * 99_000, encoding="utf-8")
+
+    assert backups.newest("fakelist") == first
+
+
 @pytest.mark.parametrize(
     "change",
     [
