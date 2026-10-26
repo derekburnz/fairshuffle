@@ -37,6 +37,7 @@ from fairshuffle.spotify.errors import (
     PlayerRefused,
     PremiumRequired,
     RequestRejected,
+    SpotifyError,
 )
 from fairshuffle.spotify.profile import clean_text
 
@@ -219,17 +220,24 @@ def _command(
         client.request(method, path, params=params or None, body=body)
     except AccessDenied as error:
         if error.reason == "PREMIUM_REQUIRED":
-            raise PremiumRequired(PREMIUM) from None
-        raise PlayerRefused(
+            raise _keeping_reason(PremiumRequired(PREMIUM), error) from None
+        refused = PlayerRefused(
             "Spotify refused that playback command"
             + (f" ({error.reason})" if error.reason else "")
             + "."
-        ) from None
+        )
+        raise _keeping_reason(refused, error) from None
     except RequestRejected as error:
         if error.status == 404 or error.reason == "NO_ACTIVE_DEVICE":
-            raise NoActiveDevice(NO_DEVICE) from None
+            raise _keeping_reason(NoActiveDevice(NO_DEVICE), error) from None
         raise
     log.info("Sent %s %s", method, path)
+
+
+def _keeping_reason[E: SpotifyError](mapped: E, original: SpotifyError) -> E:
+    """The player error with Spotify's reason code still on it, for the log and the live test."""
+    mapped.reason = original.reason
+    return mapped
 
 
 def _device_param(device_id: str | None) -> dict[str, str]:

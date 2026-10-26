@@ -274,8 +274,10 @@ def test_a_free_account_is_told_premium_is_needed(
 ) -> None:
     fake.premium = False
 
-    with pytest.raises(PremiumRequired, match="Premium"):
+    with pytest.raises(PremiumRequired, match="Premium") as caught:
         command(client)  # type: ignore[operator]
+
+    assert caught.value.reason == "PREMIUM_REQUIRED"  # kept for the log and the live test
 
 
 def test_a_command_with_no_active_device_says_to_open_spotify(
@@ -283,8 +285,10 @@ def test_a_command_with_no_active_device_says_to_open_spotify(
 ) -> None:
     fake.devices[0].is_active = False
 
-    with pytest.raises(NoActiveDevice):
+    with pytest.raises(NoActiveDevice) as caught:
         player.play(client, context_uri=PLAYLIST)
+
+    assert caught.value.reason == "NO_ACTIVE_DEVICE"
 
 
 def test_an_unknown_device_counts_as_no_device(fake: FakePlayer, client: SpotifyClient) -> None:
@@ -303,8 +307,10 @@ def test_a_reason_code_is_quoted_on_other_refusals(fake: FakePlayer, client: Spo
     player.play(client, context_uri=PLAYLIST)
     player.pause(client)
 
-    with pytest.raises(PlayerRefused, match=r"\(UNKNOWN\)"):
+    with pytest.raises(PlayerRefused, match=r"\(UNKNOWN\)") as caught:
         player.pause(client)  # already paused
+
+    assert caught.value.reason == "UNKNOWN"
 
 
 def test_rate_limits_still_come_through(

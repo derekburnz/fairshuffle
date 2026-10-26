@@ -92,6 +92,11 @@ class TrueShuffleController(QObject):
     def status(self) -> ToggleStatus:
         return self._status
 
+    @property
+    def session(self) -> true_shuffle.Session | None:
+        """The true shuffle playing while the toggle is on; None otherwise."""
+        return self._session
+
     def toggle(self, on: bool) -> None:
         """Turn True Shuffle on or off. Ignored while a change is already under way."""
         if self._status.state in (ToggleState.STARTING, ToggleState.STOPPING):
