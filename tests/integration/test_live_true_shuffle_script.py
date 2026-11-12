@@ -172,3 +172,42 @@ def test_only_the_one_owned_shuffle_test_playlist_is_used() -> None:
     ):
         with pytest.raises(script.Stop):
             script.find_test_playlist(lists, "fake-user")
+
+
+def test_when_starting_the_playlist_turns_shuffle_off_step_1_sends_it_again(
+    qapp: QApplication, client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    app.play_resets_shuffle = True
+    lines: list[str] = []
+
+    report = check(client, lines)
+
+    assert ("Spotify is playing the test playlist, shuffle on", True) in report.results  # type: ignore[attr-defined]
+
+
+def test_a_failed_step_1_says_what_spotify_reports_without_any_ids(
+    qapp: QApplication, client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    app.context_format = "spotify:user:{user}:playlist:{id}"  # the old form of a playlist URI
+    lines: list[str] = []
+
+    with pytest.raises(script.Stop, match="with shuffle on"):
+        check(client, lines)
+
+    failure = next(line for line in lines if "FAIL" in line)
+    assert "a context written 'spotify:user:<id>:playlist:<id>'" in failure
+    assert "(the test playlist's ID)" in failure
+    assert "shuffle_state true" in failure and "item track" in failure
+    assert not any("spotify:track" in line or "fake" in line for line in lines)
+
+
+@pytest.mark.parametrize(
+    ("uri", "shape"),
+    [
+        ("spotify:playlist:abc123", "'spotify:playlist:<id>'"),
+        ("spotify:user:someone:collection", "'spotify:user:<id>:collection'"),
+        ("https://open.spotify.com/playlist/abc123", "as a link or other text, not a spotify: URI"),
+    ],
+)
+def test_uri_shapes_keep_only_the_known_words(uri: str, shape: str) -> None:
+    assert script.uri_shape(uri) == shape

@@ -59,6 +59,11 @@ PROBE_SIZES = (100, 200, 300, 500, 750, 1000)
 START_AT_MS = 30_000  # step 1 starts partway into a song, as a listener would be
 SETTLE = 2.0  # seconds for Spotify's state to catch up with a command
 POLLS = 10  # reads of the player state while waiting for a change
+START_POLLS = 40  # step 1 starts the playlist from idle, which can take Spotify longer
+# Words a Spotify URI is built from. Every other part of one is an ID or a user name.
+URI_WORDS = frozenset(
+    {"spotify", "user", "playlist", "album", "artist", "show", "collection", "track", "episode"}
+)
 NO_SUCH_DEVICE = "0" * 40
 
 
@@ -131,9 +136,11 @@ def live_check(
     messages: list[str] = []
     toggle.status_changed.connect(lambda status: status.message and messages.append(status.message))
 
-    def state_when(ready: Callable[[player.PlaybackState], bool]) -> player.PlaybackState | None:
+    def state_when(
+        ready: Callable[[player.PlaybackState], bool], polls: int = POLLS
+    ) -> player.PlaybackState | None:
         state = None
-        for _ in range(POLLS):
+        for _ in range(polls):
             state = player.playback_state(client)
             if state is not None and ready(state):
                 return state
@@ -149,10 +156,21 @@ def live_check(
         player.play(
             client, context_uri=context, offset=2, position_ms=START_AT_MS, device_id=device.id
         )
-        state = state_when(lambda s: s.context_uri == context and s.item is not None)
+        state = state_when(
+            lambda s: s.context_uri == context and s.item is not None, polls=START_POLLS
+        )
+        if state is not None and state.context_uri == context and not state.shuffle:
+            # "The order of execution is not guaranteed": the play can land after the shuffle
+            # and start the playlist with shuffle off, so send the shuffle again.
+            player.set_shuffle(client, True, device.id)
+            state = state_when(lambda s: s.context_uri == context and s.shuffle)
         if state is None or state.context_uri != context or not state.shuffle:
-            report.check("Spotify is playing the test playlist, shuffle on", False)
-            raise Stop("Spotify didn't start the test playlist; is the Spotify app open?")
+            report.check(
+                "Spotify is playing the test playlist, shuffle on",
+                False,
+                player_picture(client, context),
+            )
+            raise Stop("Spotify didn't start the test playlist with shuffle on (see above).")
         report.check("Spotify is playing the test playlist, shuffle on", True)
         on_before, at_before = song(state), state.progress_ms or 0
 
@@ -271,6 +289,61 @@ def live_check(
                 put_back()
         emit(f"Playback paused; Spotify's shuffle put back to {'on' if shuffle_before else 'off'}.")
     return report
+
+
+def player_picture(client: SpotifyClient, context: str) -> str:
+    """What GET /me/player says, for a failed step 1, with every ID and name left out.
+
+    The line is pasted into chat and the issue: any field added here goes through _safe_value
+    or uri_shape, never printed as Spotify sent it.
+    """
+    try:
+        data = client.get("/me/player", {"additional_types": "track,episode"})
+    except SpotifyError as error:
+        return f"reading the player failed: {_described(error)}"
+    if not data:
+        return "Spotify says nothing is playing on any device"
+    raw = data.get("context")
+    uri = raw.get("uri") if isinstance(raw, dict) else None
+    if uri == context:
+        playing = "the test playlist"
+    elif isinstance(uri, str):
+        playing = f"a context written {uri_shape(uri)}"
+        if uri.rpartition(":")[2] == context.rpartition(":")[2]:
+            playing += " (the test playlist's ID)"
+    elif raw is None:
+        playing = "no context (null)"
+    else:
+        playing = f"a context of type {type(raw).__name__} with no URI"
+    item = data.get("item")
+    item_kind = item.get("type") if isinstance(item, dict) else None
+    device = data.get("device")
+    active = device.get("is_active") if isinstance(device, dict) else None
+    flags = ", ".join(
+        f"{key} {_safe_value(data.get(key))}"
+        for key in ("shuffle_state", "smart_shuffle", "is_playing", "currently_playing_type")
+        if key in data
+    )
+    return (
+        f"Spotify reports {playing}; {flags}; item {_safe_value(item_kind)}; "
+        f"device active {_safe_value(active)}"
+    )
+
+
+def uri_shape(uri: str) -> str:
+    """A URI with every part that isn't a known word replaced by <id>, so no ID is printed."""
+    if not uri.startswith("spotify:"):
+        return "as a link or other text, not a spotify: URI"
+    return "'" + ":".join(part if part in URI_WORDS else "<id>" for part in uri.split(":")) + "'"
+
+
+def _safe_value(value: object) -> str:
+    """True, False, None or a short known word; anything else only by its type."""
+    if value is None or isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, str) and value in {"track", "episode", "ad", "unknown"}:
+        return value
+    return f"<{type(value).__name__}>"
 
 
 def _outcome(command: Callable[[], None]) -> str:
