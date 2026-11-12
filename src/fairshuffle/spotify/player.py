@@ -217,7 +217,7 @@ def _command(
 ) -> None:
     """Send one playback command and turn Spotify's refusals into player errors."""
     try:
-        client.request(method, path, params=params or None, body=body)
+        client.request(method, path, params=params or None, body=body, want_reply=False)
     except AccessDenied as error:
         if error.reason == "PREMIUM_REQUIRED":
             raise _keeping_reason(PremiumRequired(PREMIUM), error) from None
