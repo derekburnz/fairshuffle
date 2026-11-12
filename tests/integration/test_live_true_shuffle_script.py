@@ -211,3 +211,75 @@ def test_a_failed_step_1_says_what_spotify_reports_without_any_ids(
 )
 def test_uri_shapes_keep_only_the_known_words(uri: str, shape: str) -> None:
     assert script.uri_shape(uri) == shape
+
+
+def test_step_2_prints_where_the_song_on_sits_by_position_only(
+    qapp: QApplication, client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    lines: list[str] = []
+
+    check(client, lines)
+
+    reads = [line for line in lines if line.strip().startswith("Read ")]
+    assert len(reads) == script.SETTLE_READS
+    assert all("at 1 of our order" in line and "context none" in line for line in reads)
+    assert any("Our first song is the song that was on: yes" in line for line in lines)
+
+
+def test_a_refused_command_says_what_spotify_reports_then_stops(
+    qapp: QApplication,
+    client: SpotifyClient,
+    spotify: FakeSpotify,
+    app: FakePlayer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        error = script.player.PlayerRefused("Spotify refused that playback command (UNKNOWN).")
+        error.reason = "UNKNOWN"
+        raise error
+
+    monkeypatch.setattr(script.player, "next_track", refuse)
+    lines: list[str] = []
+
+    with pytest.raises(script.player.PlayerRefused):
+        check(client, lines)
+
+    failure = next(line for line in lines if "Spotify accepted every command" in line)
+    assert "PlayerRefused, reason UNKNOWN" in failure and "Spotify reports" in failure
+    assert not any("spotify:track" in line or "fake" in line for line in lines)
+
+
+class StubClient:
+    def __init__(self, data: dict[str, object]) -> None:
+        self.data = data
+
+    def get(self, _path: str, _params: object = None) -> dict[str, object]:
+        return self.data
+
+
+def test_song_picture_names_a_relinked_song_by_position_and_lists_disallows() -> None:
+    data: dict[str, object] = {
+        "item": {
+            "type": "track",
+            "uri": "spotify:track:other",
+            "linked_from": {"uri": "spotify:track:b"},
+        },
+        "progress_ms": 0,
+        "shuffle_state": False,
+        "is_playing": True,
+        "context": None,
+        "actions": {"disallows": {"skipping_next": True, "resuming": False, "Bad Key": True}},
+    }
+
+    picture = script.song_picture(
+        StubClient(data),  # type: ignore[arg-type]
+        songs=["spotify:track:a", "spotify:track:b"],
+        order=("spotify:track:b", "spotify:track:a"),
+        before="spotify:track:a",
+    )
+
+    assert picture == (
+        "not ours, not in it, not the one that was on; relinked from a song at 1 of our order, "
+        "at 2 of the playlist, not the one that was on; 0 s in; shuffle_state false, "
+        "is_playing true; context none; disallows skipping_next and 1 other"
+    )

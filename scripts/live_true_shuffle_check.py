@@ -59,6 +59,7 @@ PROBE_SIZES = (100, 200, 300, 500, 750, 1000)
 START_AT_MS = 30_000  # step 1 starts partway into a song, as a listener would be
 SETTLE = 2.0  # seconds for Spotify's state to catch up with a command
 POLLS = 10  # reads of the player state while waiting for a change
+SETTLE_READS = 5  # step 2 reads the player this many times, SETTLE / 2 apart, and prints them
 START_POLLS = 40  # step 1 starts the playlist from idle, which can take Spotify longer
 # Words a Spotify URI is built from. Every other part of one is an ID or a user name.
 URI_WORDS = frozenset(
@@ -173,6 +174,7 @@ def live_check(
             raise Stop("Spotify didn't start the test playlist with shuffle on (see above).")
         report.check("Spotify is playing the test playlist, shuffle on", True)
         on_before, at_before = song(state), state.progress_ms or 0
+        report.note(f"Song on: {song_picture(client, songs=songs)}")
 
         emit("2. Tick True Shuffle")
         began = time.monotonic()
@@ -198,6 +200,16 @@ def live_check(
             f"{at_before / 1000:.0f} s before, {(progress or 0) / 1000:.0f} s after",
         )
         report.check("Spotify confirmed it before the toggle said on", session.confirmed)
+        report.note(
+            "Our first song is the song that was on: "
+            f"{'yes' if session.order[0] == on_before else 'no'}"
+        )
+        for read in range(SETTLE_READS):  # what Spotify reports over the next few seconds
+            report.note(
+                f"Read {read + 1}: "
+                + song_picture(client, songs=songs, order=session.order, before=on_before)
+            )
+            sleep(SETTLE / 2)
 
         emit("3. Next, Next, Previous, Pause and Resume follow our order")
         for expected in (1, 2):
@@ -279,6 +291,13 @@ def live_check(
             largest >= true_shuffle.MAX_SONGS,
             f"largest that worked {largest}, MAX_SONGS {true_shuffle.MAX_SONGS}",
         )
+    except SpotifyError as error:  # a refused command: what Spotify reports, then stop
+        report.check(
+            "Spotify accepted every command",
+            False,
+            f"{_described(error)}; {player_picture(client, context)}",
+        )
+        raise
     finally:
         toggle.watch_timer.stop()
         for put_back in (
@@ -326,7 +345,88 @@ def player_picture(client: SpotifyClient, context: str) -> str:
     )
     return (
         f"Spotify reports {playing}; {flags}; item {_safe_value(item_kind)}; "
-        f"device active {_safe_value(active)}"
+        f"device active {_safe_value(active)}; {_disallowed(data)}"
+    )
+
+
+def song_picture(
+    client: SpotifyClient,
+    *,
+    songs: Sequence[str],
+    order: Sequence[str] = (),
+    before: str | None = None,
+) -> str:
+    """Where the song on now sits, by position only: in our order, in the playlist, the song
+    that was on before, and the same for the song Spotify says it relinked from, if any."""
+    try:
+        data = client.get("/me/player", {"additional_types": "track,episode"})
+    except SpotifyError as error:
+        return f"reading the player failed: {_described(error)}"
+    if not data:
+        return "nothing playing"
+    item = data.get("item")
+    if not isinstance(item, dict):
+        return f"no song (item {_safe_value(item)})"
+    linked = item.get("linked_from")
+    parts = [_where(item.get("uri"), songs, order, before)]
+    if isinstance(linked, dict):
+        parts.append("relinked from a song " + _where(linked.get("uri"), songs, order, before))
+    progress = data.get("progress_ms")
+    seconds = f"{progress / 1000:.0f} s in" if isinstance(progress, int) else "no progress"
+    flags = ", ".join(
+        f"{key} {_safe_value(data.get(key))}" for key in ("shuffle_state", "is_playing")
+    )
+    context = data.get("context")
+    return (
+        f"{'; '.join(parts)}; {seconds}; {flags}; context "
+        f"{'none' if context is None else 'set'}; {_disallowed(data)}"
+    )
+
+
+def _where(uri: object, songs: Sequence[str], order: Sequence[str], before: str | None) -> str:
+    if not isinstance(uri, str):
+        return "with no URI"
+    if not uri.startswith("spotify:track:") and not uri.startswith("spotify:episode:"):
+        return f"written {uri_shape(uri)}"
+    found = []
+    if order:
+        found.append(f"at {order.index(uri) + 1} of our order" if uri in order else "not ours")
+    found.append(
+        f"at {list(songs).index(uri) + 1} of the playlist" if uri in songs else "not in it"
+    )
+    if before is not None:
+        found.append("the song that was on" if uri == before else "not the one that was on")
+    return ", ".join(found)
+
+
+# The documented actions.disallows names. Any other key is only counted, never printed.
+DISALLOW_NAMES = frozenset(
+    {
+        "interrupting_playback",
+        "pausing",
+        "resuming",
+        "seeking",
+        "skipping_next",
+        "skipping_prev",
+        "toggling_repeat_context",
+        "toggling_shuffle",
+        "toggling_repeat_track",
+        "transferring_playback",
+    }
+)
+
+
+def _disallowed(data: dict[str, object]) -> str:
+    """The actions Spotify says it won't take now, such as skipping_next. Known names only."""
+    actions = data.get("actions")
+    disallows = actions.get("disallows") if isinstance(actions, dict) else None
+    if not isinstance(disallows, dict):
+        return "no disallows given"
+    true_keys = [key for key, value in disallows.items() if value is True]
+    names = sorted(key for key in true_keys if key in DISALLOW_NAMES)
+    others = len(true_keys) - len(names)
+    return f"disallows {', '.join(names) or 'nothing'}" + (
+        f" and {others} other{'s' if others != 1 else ''}" if others else ""
     )
 
 
