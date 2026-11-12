@@ -19,6 +19,9 @@ plays a context back to front, so a test sees at once when our order was not the
 command_reply=(200, "...") copies the live test (#117): success with a body that isn't JSON.
 deferred_shuffle=True copies "The order of execution is not guaranteed": a shuffle command only
 takes effect after the next command, so code must read the state back rather than trust order.
+play_resets_shuffle=True turns Spotify's shuffle off whenever a playlist starts, and
+context_format changes how GET /me/player writes the playing playlist's URI (for example the old
+"spotify:user:{user}:playlist:{id}" form): both are ways the live test's step 1 could fail.
 """
 
 from __future__ import annotations
@@ -69,6 +72,9 @@ class FakePlayer:
     # Set to answer successful commands with this status and raw body instead of 204, as the
     # real Spotify did in the live test (#117): a 2xx whose body isn't a JSON object.
     command_reply: tuple[int, str] | None = None
+    play_resets_shuffle: bool = False
+    # How GET /me/player writes the context URI; {uri} is the URI played, {id} its last part.
+    context_format: str = "{uri}"
     devices: list[FakeDevice] = field(default_factory=list)
     shuffle: bool = False
     repeat: str = "off"
@@ -193,6 +199,8 @@ class FakePlayer:
             if tracks is None:
                 return _error(404, "Context not found")
             self.context_uri = context_uri
+            if self.play_resets_shuffle:
+                self.shuffle = False
         start = offset.get("position", 0) if isinstance(offset, dict) else 0
         if self.shuffle:  # Spotify's own shuffle: anything but the order asked for
             tracks = list(reversed(tracks))
@@ -224,7 +232,12 @@ class FakePlayer:
                 "artists": [{"name": "Fake Artist"}],
                 "album": {"images": [{"url": "https://i.scdn.co/image/fake-cover", "width": 640}]},
             }
-        context = {"uri": self.context_uri, "type": "playlist"} if self.context_uri else None
+        context = None
+        if self.context_uri:
+            shown = self.context_format.format(
+                uri=self.context_uri, id=self.context_uri.rsplit(":", 1)[-1], user="fake-user"
+            )
+            context = {"uri": shown, "type": "playlist"}
         return _ok(
             200,
             {
