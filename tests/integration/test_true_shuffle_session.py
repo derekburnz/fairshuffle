@@ -161,6 +161,18 @@ def test_next_and_previous_in_spotify_follow_our_order(
     assert app.shuffle is False
 
 
+def test_spotify_answering_commands_with_a_non_json_reply_still_works(
+    client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
+) -> None:
+    app.command_reply = (200, "not json")  # the live test's failure (#117)
+
+    session = start(client)
+
+    assert session.confirmed
+    assert app.order == expected_order()
+    assert true_shuffle.stop(client, session)
+
+
 def test_shuffle_off_that_lands_after_the_play_is_sent_again(
     client: SpotifyClient, spotify: FakeSpotify, app: FakePlayer
 ) -> None:

@@ -16,6 +16,7 @@ Where the docs are silent, the fake copies what the API is known to send and say
 with no active device answers 404 NO_ACTIVE_DEVICE, a free account 403 PREMIUM_REQUIRED, a
 restricted device 403 with no reason, and an unknown device_id 404. With shuffle on, the fake
 plays a context back to front, so a test sees at once when our order was not the one played.
+command_reply=(200, "...") copies the live test (#117): success with a body that isn't JSON.
 deferred_shuffle=True copies "The order of execution is not guaranteed": a shuffle command only
 takes effect after the next command, so code must read the state back rather than trust order.
 """
@@ -65,6 +66,9 @@ class FakePlayer:
     resolve: Callable[[str], list[str] | None] = lambda _uri: None
     premium: bool = True
     deferred_shuffle: bool = False
+    # Set to answer successful commands with this status and raw body instead of 204, as the
+    # real Spotify did in the live test (#117): a 2xx whose body isn't a JSON object.
+    command_reply: tuple[int, str] | None = None
     devices: list[FakeDevice] = field(default_factory=list)
     shuffle: bool = False
     repeat: str = "off"
@@ -127,6 +131,9 @@ class FakePlayer:
         reply = self._command(method, rest, call)
         if reply[0] < 300 and rest != "/shuffle" and self._pending_shuffle is not None:
             self.shuffle, self._pending_shuffle = self._pending_shuffle, None
+        if reply[0] == 204 and self.command_reply is not None:
+            status, raw = self.command_reply
+            return status, {"Content-Type": "text/plain"}, raw
         return reply
 
     def _refusal(self, call: PlayerCall) -> Reply | None:

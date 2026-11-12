@@ -375,3 +375,19 @@ def test_commands_log_the_route_but_never_the_device(
 )
 def test_the_best_image_is_a_spotify_https_link(images: object, expected: str | None) -> None:
     assert player.best_image(images) == expected
+
+
+@pytest.mark.parametrize(
+    "raw", ["", "not json", '"a JSON string"', "[]"], ids=["empty", "text", "string", "list"]
+)
+def test_a_command_spotify_accepts_with_an_odd_reply_still_succeeds(
+    fake: FakePlayer, client: SpotifyClient, raw: str
+) -> None:
+    fake.command_reply = (200, raw)  # what the live test (#117) got back from Spotify
+
+    player.set_shuffle(client, False)
+    player.play(client, context_uri=PLAYLIST)
+    player.next_track(client)
+
+    assert fake.shuffle is False
+    assert fake.current is not None

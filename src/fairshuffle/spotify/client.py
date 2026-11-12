@@ -114,8 +114,14 @@ class SpotifyClient:
         *,
         params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
+        want_reply: bool = True,
     ) -> dict[str, Any]:
-        """Send one call, retrying as the module docstring describes, and return its JSON."""
+        """Send one call, retrying as the module docstring describes, and return its JSON.
+
+        want_reply=False is for commands whose success is the status alone, such as the player's:
+        a 2xx then returns {} whatever its body holds. Spotify documents 204 for those, but the
+        live test (#117) got a 2xx with a body that isn't a JSON object.
+        """
         _check_path(path)
         method = method.upper()
         is_read = method in _READS
@@ -141,6 +147,15 @@ class SpotifyClient:
                     raise SpotifyUnavailable(f"Spotify keeps answering {status}. Try again later.")
                 self._wait(backoff_delay(attempt, self._policy, self._rng), what, str(status))
                 continue
+            if not want_reply and 200 <= status < 300:
+                if response.content and status != 204:
+                    log.info(
+                        "%s answered %d with a %d-byte reply; not needed",
+                        what,
+                        status,
+                        len(response.content),
+                    )
+                return {}
             return self._read(response, path)
         raise AssertionError("unreachable")  # pragma: no cover  # the last attempt always ends
 
